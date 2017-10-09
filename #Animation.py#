@@ -1,0 +1,112 @@
+import matplotlib
+#matplotlib.use('GTK')
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from astLib import astCoords
+import params as pm
+
+mag_lim = pm.mag_limit
+band_colors = {'U':'Violet', 'B':'Blue', 'V':'Green', 'R':'Red', 'I':'Orange', 'J':'Pink',\
+               'H':'Brown', 'K':'Gray'}
+
+class AnData:
+    def __init__(self, datafile, bandList):
+        f = open(datafile, 'r')
+        hdr = f.readline().split()
+        f.close()
+        data = np.genfromtxt( datafile, skip_header =1 )
+        self.mag_norm = np.min( data[:,4:])
+        # set the window for the observation
+        tm, ras, decs = np.unique(data[:,1]), data[:,2], data[:,3]
+        self.ra_min = np.floor( 2*np.min(ras))/2.0
+        self.ra_max = np.ceil( 2*np.max(ras))/2.0
+        self.dec_min = np.floor( 2*np.min(decs))/2.0
+        self.dec_max = np.ceil( 2*np.max(decs))/2.0
+        col_ids = [0,2,3] + [ hdr.index( bnd ) for bnd in bandList ]
+        self.timeFrames = [ data[data[:,1] == t][:,col_ids] for t in tm ]
+        for tf in self.timeFrames: print np.shape(tf)
+        self.times = tm
+        dt = (tm[1] - tm[0])/8.64e4
+        self.n_frames = len(self.times)
+        # add information about rates of change
+        for i in range( self.n_frames ):
+            tF_now = self.timeFrames[i]
+            if i < self.n_frames-1:
+                tF_nxt = self.timeFrames[i+1]
+            else:
+                tF_nxt = self.timeFrames[i-1]
+            dmdtDat = np.zeros( np.shape(tF_now[:,3:]) )
+            print "dmdtDat ", np.shape(dmdtDat)
+            for j, iD in enumerate(tF_now[:,0]):
+                mags_now = tF_now[tF_now[:,0]==iD][0,3:]
+                if iD in tF_nxt[:,0]:
+                    mags_nxt = tF_nxt[tF_nxt[:,0]==iD][0,3:]
+                else: mags_nxt = (mag_lim+1) * np.ones( len(mags_now) )
+                dMdt = np.abs( mags_now - mags_nxt )/dt
+                dmdtDat[j] = dMdt
+            self.timeFrames[i] = np.column_stack( (self.timeFrames[i], dmdtDat ) )
+        self.dmdt_max = max( np.max( tF[:,-len(bandList):] ) for tF in self.timeFrames )
+        print self.dmdt_max
+            
+class Animated:
+    def __init__(self, dataFile, bandlist):
+        if len(bandlist) <= 3:
+            n_row, n_col = 1, len(bandlist) 
+        else:
+            n_col = 2
+            n_row = (len(bandlist)+1)/2
+        fig_x, fig_y = n_col*4, n_row*4
+        fig, axs = plt.subplots( n_row, n_col, figsize = (fig_x, fig_y) )
+        self.fig = fig
+        self.axs = axs.flatten()
+        self.data = AnData(dataFile, bandlist)
+        for i, bnd in enumerate(bandlist):
+            self.axs[i].set_xlim(self.data.ra_min, self.data.ra_max)
+            self.axs[i].set_ylim(self.data.dec_min, self.data.dec_max)
+            self.axs[i].set_title( bnd )
+            self.axs[i].set_xlabel( 'RA' )
+            self.axs[i].set_ylabel( 'DEC' )
+        self.bands = bandlist
+        self.nBands = len(bandlist)
+        self.size_min = 5.0
+        size_max = 200.0
+        self.scatters = []
+        self.timetext = ''
+        self.size_grad = (size_max - self.size_min)/(self.data.mag_norm - mag_lim)
+        self.anim = animation.FuncAnimation(  self.fig, self.update, np.arange(self.data.n_frames),\
+                                            init_func=self.plot_init, repeat=False)
+    def plot_init( self ):
+        init_dat, init_t = self.data.timeFrames[0], self.data.times[0]
+        for i in range( self.nBands ):
+            this_ra, this_dec, this_mag = init_dat[init_dat[:,i+3] <= mag_lim].T[[1,2,i+3]]
+            this_pos = np.column_stack( (this_ra, this_dec) )
+            sizes = self.size_min + (this_mag-mag_lim)*self.size_grad
+            sc = self.axs[i].scatter( this_ra, this_dec, s = sizes, c = band_colors[self.bands[i]],\
+                           alpha = 0.6)
+            self.scatters.append(sc)
+        self.time_text = self.axs[0].text( 0.0, 1.03, "t = %.2f days" % (init_t/8.64e4), transform=self.axs[0].transAxes)
+        return self.scatters,self.timetext     
+    def update( self, frame_no ):
+        dat, t = self.data.timeFrames[frame_no], self.data.times[frame_no]
+        for i in range( self.nBands ):
+            this_ra, this_dec, this_mag = dat[dat[:,i+3] <= mag_lim].T[[1,2,i+3]]
+            this_pos = np.column_stack( (this_ra, this_dec) )
+            sizes = self.size_min + (this_mag-mag_lim)*self.size_grad
+            self.scatters[i].set_offsets( np.column_stack( (this_ra, this_dec) ))
+            self.scatters[i]._sizes = sizes
+        self.time_text.set_text( 't = %.2f days' % (t/8.64e4))
+        return self.scatters,self.timetext     
+    def show(self):
+        plt.show()
+
+def AnimateSky():
+    skyfile = pm.outfile
+    bList = [b for b in pm.showbands]
+    print "beginning animation"
+    an = Animated( skyfile, bList )
+    an.show()
+
+def AnimateFile( skyfile, bList ):
+    an = Animated( skyfile, bList )
+    an.show()
