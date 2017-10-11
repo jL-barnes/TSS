@@ -252,7 +252,7 @@ class Mdwarf_template( transientTemplate ):
         logE_min, logE_max = vals[9:11]
         self.dlogE_ina = np.arange( logE_min, logE_max, .1 )
         qs = vals[11:]
-        self.Lq = {'U':qs[0],'B':qs[1],'V'qs[2],'R':qs[3],'I':qs[4],'J':qs[5],'H':qs[6],'K':qs[7]}
+        self.Lq = {'U':qs[0],'B':qs[1],'V':qs[2],'R':qs[3],'I':qs[4],'J':qs[5],'H':qs[6],'K':qs[7]}
         if self.colors == 'ugriz': self.Lq = get_ugriz_quiescents( self.Lq )
         self.Epk = {}
     def get_blueprints( self, c, dtObs, mag_lim ):
@@ -349,7 +349,7 @@ class Mdwarf_template( transientTemplate ):
                 
     def setUpLCs():
         # get unscaled light curves 
-        return -
+        return #-
 
 class xgal_template( transientTemplate ):
     def __init__( self, tag, trData ):
