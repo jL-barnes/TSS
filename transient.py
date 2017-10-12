@@ -309,13 +309,13 @@ class Mdwarf_template( transientTemplate ):
                 alf = self.alf_in + self.da_dz * hZ
                 bet = self.bet_in
                 eBins = self.dlogE_ina
-            nFlares = np.zeros( len(eBins) )
-            for i, elog in enumerate( eBins ):
-                eng = np.power(elog,10.0)
-                ne = tWindow * np.power(10.0, alf) * np.power(eng, bet)
-                z = np.random.random()
-                if z < ne - int(ne): ne += 1.0
-                nFlares[i] = int(ne)
+            #Determine Flare Frequency
+            ne = tWindow * np.power(10.0, alf) * np.power(10.0, bet*eBins)
+            z = np.random.random(len(eBins))  #Round probabilities off to integers
+            cond = z < ne - ne.astype(int)
+            ne[cond] +=1
+            nFlares = ne.astype(int)
+
             if max( nFlares ) < 1: continue
             else:
                 lumlist = self.get_all_lums( nFlares, eBins, obTimes )
@@ -347,9 +347,9 @@ class Mdwarf_template( transientTemplate ):
         lumlist = [row for row in lum_matrix]
         return lumlist
                 
-    def setUpLCs():
+    #def setUpLCs():
         # get unscaled light curves 
-        return #-
+    #   return #-
 
 class xgal_template( transientTemplate ):
     def __init__( self, tag, trData ):
@@ -404,7 +404,7 @@ def geometricP( nt ):
         p = 0.5*nt
         z1 = np.random.geometric( p, size=2 )
         if   (z1 == 1).sum() == 2: Nt = 2
-        elif (z1 == 1).sum() == 2: Nt = 1
+        elif (z1 == 1).sum() == 1: Nt = 1
     else:
         z1 = np.random.geometric( nt, size = 1 )
         if z1 == 1: Nt = 1
