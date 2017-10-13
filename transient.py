@@ -20,7 +20,7 @@ class TransientSet:
         self.mag_lim = obRun.mag_lim
         self.deltaT_obs  = (obRun.TimeParams.t_end - obRun.TimeParams.t_start)/8.64e4
         print 'setting up functional broadband forms...'
-        self.setUpLC_funs( obRun.colorScheme, obRun.bands, self.mag_lim )
+        self.setUpLC_funs( obRun.colorScheme, obRun.bands)
         print 'done!'
     def setUpLC_funs(self, colorchoice, bands):
         for trtemp in self.transient_templates:
@@ -72,6 +72,7 @@ class transientTemplate:
         self.deltaT_LC    = float( transientsData[10] )
         self.N_trans     = 0    # how many transients each template has
         self.transients  = []   # list of light curves blueprints here
+        self.N_transnonsee = 0
     def setUpLC( self, colorchoice, bands ):
         print 'for %s' % self.tag
 #        if colorchoice == 'UBVRI': 
@@ -89,7 +90,7 @@ class transientTemplate:
         lcdata = h5py.File( self.LCFile + '_%s.hdf5' % colorchoice, 'r' )
         tms = lcdata['times'][:]
         self.broadbands['t'] = tms;
-        for band in allBands:
+        for band in self.allBands:
             print "%s band" % band
             if not band in lcdata.keys():
                 print "no data for %s band" % band
@@ -138,6 +139,7 @@ class transientTemplate:
         return NTr   
     def get_blueprints( self, c, dtObs, mag_lim ):
         N_transients = self.get_Ntransients( c )
+        self.N_transnonsee += N_transients
         for i in range( N_transients ):
             tOutburst = -365.25 * np.random.random()
             if tOutburst + self.deltaT_LC + dtObs > 0.0:

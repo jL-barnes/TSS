@@ -16,12 +16,12 @@ from Animation import AnimateSky
 ###################################
 # Set up the observation:
 ###################################
-
+#%%
 observingRun = ob.observation( pm.RA_lo, pm.RA_hi, pm.DEC_lo, pm.DEC_hi,\
                                 pm.nCells_D, pm.nCells_xgal, pm.mag_limit,\
                                 pm.start_obs, pm.dur_obs, pm.nObs_per_day )
-
-observingRun.setUpColors( pm.color_system, pm.use_bands )                               
+#%%
+observingRun.setUpColors( pm.color_system, pm.showbands )                               
 
 
 ###################################
@@ -36,7 +36,7 @@ transientZoo.populate()
 
 
 for temp in transientZoo.transient_templates:
-    print temp.tag, temp.N_trans
+    print temp.tag, temp.N_trans, temp.N_transnonsee
 
 observingRun.take_data( transientZoo, pm.outfile )
 print "To do:\n\tPhillips relation\n\tDust Extinction"

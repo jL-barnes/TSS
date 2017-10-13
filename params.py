@@ -51,4 +51,4 @@ transientFile = 'dataTransients.dat'
 # parameters for the data display and output
 outfile = 'test_SNIa.dat'
 # band to show in animation. Must be consistent with choice of color system above.
-use_bands = 'BRI'  
+showbands = 'BRI'  

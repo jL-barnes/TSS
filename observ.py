@@ -183,7 +183,6 @@ class observation:
                     pkmag, devmag = float(fields[6]), float(fields[7])
                     brightest = min(brightest, pkmag - 3.0*devmag)
         f.close()
-        print brightest
         exp_term = 0.2*( self.mag_lim - brightest ) + 1.0
         Dmax_xgal = np.power( 10.0, exp_term ) # parsecs
         Dmax_xgal /= 1.0e3 # kiloparsecs
@@ -191,7 +190,7 @@ class observation:
         # set the properties of the sky window
         self.SkyGrid = grid( RA_lo, RA_hi, DEC_lo, DEC_hi, Dmax_xgal, N_dist_MW,\
                                  N_dist_xgal )
-        #self.SkyGrid.resize( 2.0, 0 )
+        #self.SkyGrid.resize( 2.0, 1 )
         self.SkyGrid.setCellValues()
         self.TimeParams = timeFrame( t_start, durObs, nPerDay )
     def setUpColors( self, col, bands ):
@@ -240,9 +239,11 @@ class observation:
                 imax = i + len( radec )
                 trIds += range(i, imax)
                 radec_coords[i:imax] = radec
-                mags[ i:imax,:,:] = np.array( [np.array(bS).T for bS in bandSets] )
+                Nrbands = len(bandSets[0])
+                mags[ i:imax,:,:Nrbands] = np.array( [np.array(bS).T for bS in bandSets] )
+                print "lowest mag", np.max(mags)
                 i = imax
-                f = open( 'lc_data_test.dat', 'wb' )
+                f = open( 'lc_data_test%s.dat' % trTemp.tag, 'wb' )
                 clc = csv.writer( f, delimiter = '\t' )
                 for k, bS in enumerate(bandSets):
                     for j in range( len(bS[0]) ):
@@ -259,7 +260,10 @@ class observation:
         # set up csv
         cwr = csv.writer( f, delimiter = '\t' )
         cwr.writerow( trTypes + [1, 'thing_1', 2, 'alien_flashlights'] )
-        hdrs = ['iD','type','time', 'RA', 'DEC'] + [b for b in self.colorScheme] + ['J','H','K']
+        if self.colorScheme == 'UBVRI':
+            hdrs = ['iD','type','time', 'RA', 'DEC'] + [b for b in self.colorScheme] + ['J','H','K']
+        elif self.colorScheme == 'ugriz':
+            hdrs = ['iD','type','time', 'RA', 'DEC'] + [b for b in self.colorScheme]
         cwr.writerow(hdrs)
         # write out data
         types = [int(z) for z in 3.0*np.random.random(size = nTr_tot)]
