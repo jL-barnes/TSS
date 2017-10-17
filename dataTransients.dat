@@ -1,15 +1,15 @@
 # name    # 0 = galactic     # in thin   # in thick   # in      # in     # peak   # std dev    # LC file      N per kpc (solar   scale height    	bright     freq (days)    freq. std.  
   	    1 = gal,recur       disk?        disk?      bulge?   halo      mag      peak mag                   neighborhood)     (thin disk, kpc)	time	   (gal-recur)    dev.(days)  
-	    2 = Mdwarf                                                                                        OR N per kpc per                   		                   
+	    2 = Mdwarf                                                                                        OR N per kpc per                          (days)		                   
 	    3 = extragal                                                                                       year (xgal)			 		
 ==============================================================================================================================================================================================
 
-nova	          0               1          1             1         1      -8.1	0.5       nova		     4.62e-2            0.3          	10.0	      0.0            0.0       
-CVpolar	          1               1          0             1         1      -10          1        CVPolar_LCs.npy    5.00e2	        0.26 	 	10.0          49.47          15.38     
+nova	          0               1          1             1         1      -7.92	0.5       nova		     4.62e-2            0.3          	100.0	      0.0            0.0       
+CVpolar	          1               1          0             1         1      -10          1        CVPolar_LCs.npy    5.00e2	        0.26 	 	10.0          0.0            0.0     
 CVIP	          0	          1          0             1         1      -10          1        CVIP_LCs.npy       3.00e2	        0.26	 	10.0          0.0	     0.0      
-CVdwarf	          1	          1          0             1         1      -10          1        CVdwarf_LCs.npy    5.6e3	        0.12	 	10.0          0.0	     0.0      
+CVdwarf	          1	          1          0             1         1       4.0        1.5       CVdwarf_LCs.npy    5.6e3	        0.12	 	20.0          49.47	     15.38      
 AMCVn	          0	          1          0             1         1      -10          1        AMCVn_LCs.npy      5.0e2	        0.3		10.0 	      0.0	     0.0      
-SNIa	          3	          0          0             0         0      -19.25      0.5       SNIa               4.0e-14	        0.3		10.0 	      0.0	     0.0      
+SNIa	          3	          0          0             0         0      -19.25      0.5       SNIa               4.0e-14	        0.3		100.0 	      0.0	     0.0      
 M3	          2	          1          1             1         1      -10          1        M3_LCs.npy         5.95e6	        0.3		10.0 	      0.0	     0.0      
 M3_5	          2	          1          1             1         1      -10          1        M3_5_LCs.npy       5.95e6	        0.3		10.0 	      0.0	     0.0      
 M4	          2	          1          1             1         1      -10          1        M4_LCs.npy         5.95e6	        0.3		10.0 	      0.0	     0.0      

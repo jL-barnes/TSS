@@ -72,7 +72,7 @@ class transientTemplate:
         self.deltaT_LC    = float( transientsData[10] )
         self.N_trans     = 0    # how many transients each template has
         self.transients  = []   # list of light curves blueprints here
-        self.N_transnonsee = 0
+        self.N_transnonsee = 0  #Nr of generated transients, regardless of visibility
     def setUpLC( self, colorchoice, bands ):
         print 'for %s' % self.tag
 #        if colorchoice == 'UBVRI': 
@@ -144,7 +144,7 @@ class transientTemplate:
             tOutburst = -365.25 * np.random.random()
             if tOutburst + self.deltaT_LC + dtObs > 0.0:
                 magDelta = np.random.normal( scale = self.std_mag )
-                peak_M = self.peak_mag + magDelta
+                peak_M = self.peak_mag - magDelta
                 newLC = LC_blueprint( c.sampleCoords(), peak_M, magDelta, tOutburst )
                 if canSee_LC( newLC, mag_lim ):
                     self.transients.append( newLC )
@@ -180,10 +180,11 @@ class galactic_recur_template( transientTemplate ):
         self.freqDev = float( trData[12] )
     def get_blueprints( self, c, dtObs, mag_lim ):
         N_transients = self.get_Ntransients( c )
+        self.N_transnonsee += N_transients
         for i in range( N_transients ):
-            tOutburst = -365.25 * np.random.random()
+            tOutburst = -365.25 * np.random.random() 
             magDelta = self.std_mag * 3.0
-            peak_M = self.peak_mag + magDelta
+            peak_M = self.peak_mag - magDelta
             newLC = LC_blueprint( c.sampleCoords(), peak_M, magDelta, tOutburst )
             if canSee_LC( newLC, mag_lim ):
                 self.transients.append( newLC )
@@ -193,26 +194,26 @@ class galactic_recur_template( transientTemplate ):
         obT_f = obTimes[-1]
         dts = obT_f - obTimes
         for lc in self.transients:
-            radec, mags = self.sample_single_LC( lc, dts )
+            radec, mags = self.sample_single_LC( lc, dts, threshold )
             if len(radec) > 0:
                 radec_list.append( radec )
                 bandmags_list.append( mags )
         return radec_list, bandmags_list
-    def sample_single_LC( lc, tvals ):
+    def sample_single_LC(self, lc, tvals, threshold ):
         # figure out the times for each outburst
         tOuts = []
         t_OutBurst = lc.tExplode
         # step forward in time
-        while tOutBurst < 0.0:
+        while t_OutBurst < 0.0:
             tOuts.append( t_OutBurst )
             t_OutBurst += np.random.normal( loc = self.freqDay, scale = self.freqDev)
         # step backward in time
         t_OutBurst = lc.tExplode - np.random.normal( loc = self.freqDay, scale = self.freqDev)
-        while t_OutBurst + self.deltaT_LC > -dts[0]: 
+        while t_OutBurst + self.deltaT_LC > (-tvals[0] / year_to_seconds): 
             tOuts.insert(0, t_OutBurst)
             t_OutBurst -= np.random.normal( loc = self.freqDay, scale = self.freqDev)
         # construct the aggregate light curve
-        if len( tOuts > 0 ):
+        if len( tOuts ) > 0:
             tO = tOuts[0]
             tSamp = -tvals - tO*8.64e4
             # deviation for this occurrence of the transient
@@ -221,14 +222,14 @@ class galactic_recur_template( transientTemplate ):
             for band in bandMags:
                 band[ band < emptyval ] +=  magDev
             for tO in tOuts[1:]:
-                tSamp = -tvals - t0*8.64e4
+                tSamp = -tvals - tO*8.64e4
                 magDev = np.random.normal( scale = self.std_mag )
                 these_bandMags = self.get_all_bbs( tSamp )
                 for bi, band in enumerate( these_bandMags ):
                     band[ band < emptyval ] += magDev
                     oband = bandMags[bi]
-                    i3 = ( band != emptyVal ) & ( oband == emptyVal )
-                    i4 = ( band != emptyVal ) & ( oband != emptyVal )
+                    i3 = ( band != emptyval ) & ( oband == emptyval )
+                    i4 = ( band != emptyval ) & ( oband != emptyval )
                     bandMags[bi][i3] = band[i3]
                     bandMags[bi][i4] = -2.5 * np.log10( np.power(10, -.4*band[i4]) +\
                                                         np.power(10, -.4*oband[i4])  )
@@ -259,6 +260,7 @@ class Mdwarf_template( transientTemplate ):
         self.Epk = {}
     def get_blueprints( self, c, dtObs, mag_lim ):
         N_transients = self.get_Ntransients( c )
+        self.N_transnonsee += N_transients
         for i in range( N_transients ):
             t_dummy = -365.25 * np.random.random()
             newLC = LC_blueprint( c.sampleCoords(), self.peak_mag, 0.0, t_dummy )

@@ -42,8 +42,9 @@ use_M4       = 0
 use_kilonova = 0
 
 # File holding data for the transients:
-transientFile = 'dataTransients.dat'
+#transientFile = 'dataTransients.dat'
 
+transientFile = 'test.dat'
 
 
 
