@@ -103,14 +103,15 @@ def eq_to_gal( alpha, delta ):
 
 	atn = np.arctan( (np.sin(a_G-a))/(np.cos(a_G-a)*np.sin(d_G)-np.tan(d)*np.cos(d_G)))
 	l = l0 - atn
-        b = np.arcsin( np.sin(d)*sin(d_G) + np.cos(d)*np.cos(d_G)*np.cos(a_G-a) )
+        b = np.arcsin( np.sin(d)*np.sin(d_G) + np.cos(d)*np.cos(d_G)*np.cos(a_G-a) )
 	while b > 2.0*np.pi:
 		b -= 2*pi
 	return b,l
 
 def get_galactic_height( alpha, delta, dist_kpc ):
     b, l = eq_to_gal( alpha, delta )
-    z = galactic_to_cylindrical( b, l, dist )
+    r, z = galactic_to_cylindrical( b, l, dist_kpc )
+    return z
 
 def galactic_to_cylindrical( B, L, D ):
 	b = np.deg2rad( B )

@@ -1,14 +1,16 @@
 import numpy as np
 from scipy.interpolate import interp1d
 import h5py
-import params as pm
+import testparams as pm
 import MilkyWay as MW
 
 year_to_seconds = 8.64e4 * 365.25
 emptyval = pm.mag_limit + 10.0
 
-f0_UBVRI = {'U':417.5, 'B':632.0, 'V':363.1, 'R':217.7, 'I':112.6, 'J':31.47, 'H':11.38, 'K':3.961}
-f0_ugriz = {'u':859.5, 'g':466.9, 'r':278.0, 'i':185.2, 'z':131.5}
+f0_UBVRI = {'U':417.5e-11, 'B':632.0e-11, 'V':363.1e-11, 'R':217.7e-11, 'I':112.6e-11, 'J':31.47e-11, 'H':11.38e-11, 'K':3.961e-11} 
+f0_ugriz = {'u':859.5e-11, 'g':466.9e-11, 'r':278.0e-11, 'i':185.2e-11, 'z':131.5e-11}
+
+pc_to_cm = 3.08567758e18
 
 class TransientSet:
     def __init__ ( self, obRun ):
@@ -155,7 +157,7 @@ class transientTemplate:
         dts = obT_f - obTimes
         for lc in self.transients: 
             tSamp = -lc.tExplode * 8.64e4 - dts
-            dval = lc.LC_Dist
+            dval = lc.LC_Dist	#is in kpc
             dist_mod = 5.0 * np.log10(dval*1.0e3) - 5.0
             magDev = lc.magDelta
             bandMags = self.get_all_bbs( tSamp )
@@ -163,7 +165,7 @@ class transientTemplate:
                 band[band < emptyval] += dist_mod + magDev
             bbExt = min( [np.min( band ) for band in bandMags] )
             if bbExt > threshold:
-                continue
+                self.N_trans -=1
             else:
                 radec_list.append( [ lc.LC_RA, lc.LC_DEC ] )
                 bandmags_list.append( bandMags )
@@ -209,11 +211,12 @@ class galactic_recur_template( transientTemplate ):
             t_OutBurst += np.random.normal( loc = self.freqDay, scale = self.freqDev)
         # step backward in time
         t_OutBurst = lc.tExplode - np.random.normal( loc = self.freqDay, scale = self.freqDev)
-        while t_OutBurst + self.deltaT_LC > (-tvals[0] / year_to_seconds): 
+        while t_OutBurst + self.deltaT_LC > (-tvals[0] / 8.64e4): 
             tOuts.insert(0, t_OutBurst)
             t_OutBurst -= np.random.normal( loc = self.freqDay, scale = self.freqDev)
         # construct the aggregate light curve
         if len( tOuts ) > 0:
+            tOuts = tOuts[::-1]	#flip the array to start with the closest outburst
             tO = tOuts[0]
             tSamp = -tvals - tO*8.64e4
             # deviation for this occurrence of the transient
@@ -222,16 +225,17 @@ class galactic_recur_template( transientTemplate ):
             for band in bandMags:
                 band[ band < emptyval ] +=  magDev
             for tO in tOuts[1:]:
-                tSamp = -tvals - tO*8.64e4
-                magDev = np.random.normal( scale = self.std_mag )
-                these_bandMags = self.get_all_bbs( tSamp )
-                for bi, band in enumerate( these_bandMags ):
-                    band[ band < emptyval ] += magDev
-                    oband = bandMags[bi]
-                    i3 = ( band != emptyval ) & ( oband == emptyval )
-                    i4 = ( band != emptyval ) & ( oband != emptyval )
-                    bandMags[bi][i3] = band[i3]
-                    bandMags[bi][i4] = -2.5 * np.log10( np.power(10, -.4*band[i4]) +\
+                if tO > (-tvals[0] / 8.64e4) - self.deltaT_LC:
+                    tSamp = -tvals - tO*8.64e4
+                    magDev = np.random.normal( scale = self.std_mag )
+                    these_bandMags = self.get_all_bbs( tSamp )
+                    for bi, band in enumerate( these_bandMags ):
+                        band[ band < emptyval ] += magDev
+                        oband = bandMags[bi]
+                        i3 = ( band != emptyval ) & ( oband == emptyval )
+                        i4 = ( band != emptyval ) & ( oband != emptyval )
+                        bandMags[bi][i3] = band[i3]
+                        bandMags[bi][i4] = -2.5 * np.log10( np.power(10, -.4*band[i4]) +\
                                                         np.power(10, -.4*oband[i4])  )
         # apply distance modulus
         dval = lc.LC_Dist
@@ -240,6 +244,7 @@ class galactic_recur_template( transientTemplate ):
             band += dist_mod
         bbExt = min([np.min(band) for band in bandMags])
         if bbExt > threshold:
+            self.N_trans -= 1
             return [],[]
         else:
             return [lc.LC_RA, lc.LC_DEC], bandMags
@@ -251,12 +256,13 @@ class Mdwarf_template( transientTemplate ):
         self.aval, self.bval, self.alf_ac, self.alf_in,\
             self.bet_ac, self.bet_in, self.da_dz = vals[0:7]
         logE_min, logE_max = vals[7:9]
-        self.dlogE_act = np.arange( logE_min, logE_max, .1 )
+        self.dlogE_act = np.linspace( logE_min, logE_max, 50 )
         logE_min, logE_max = vals[9:11]
-        self.dlogE_ina = np.arange( logE_min, logE_max, .1 )
+        self.dlogE_ina = np.linspace( logE_min, logE_max, 50 )
         qs = vals[11:]
-        self.Lq = {'U':qs[0],'B':qs[1],'V':qs[2],'R':qs[3],'I':qs[4],'J':qs[5],'H':qs[6],'K':qs[7]}
-        if self.colors == 'ugriz': self.Lq = get_ugriz_quiescents( self.Lq )
+        self.Lq = {'U':qs[0],'B':qs[1],'V':qs[2],'R':qs[3],'I':qs[4],'J':qs[5],'H':qs[6],'K':qs[7],'u':qs[8],'g':qs[9],'r':qs[10],'i':qs[11],'z':qs[12]}
+        #if self.colors == 'ugriz': self.Lq = get_ugriz_quiescents( self.Lq )
+        self.Flare_energy = float( trData[13] )
         self.Epk = {}
     def get_blueprints( self, c, dtObs, mag_lim ):
         N_transients = self.get_Ntransients( c )
@@ -276,10 +282,11 @@ class Mdwarf_template( transientTemplate ):
         else:
             print 'Invalid color system.'
             return 0
+        self.allBands = list(bands)
         lcdata = h5py.File( self.LCFile + '_%s.hdf5' % colorchoice, 'r' )
         tms = lcdata['times'][:]
         self.broadbands['t'] = tms;
-        for band in allBands:
+        for band in self.allBands:
             print "%s band" % band
             if not band in lcdata.keys():
                 print "no data for %s band" % band
@@ -293,24 +300,25 @@ class Mdwarf_template( transientTemplate ):
             self.Epk[band] = np.max(bb)
         lcdata.close()
     def sample_all_LCs( self, obTimes, threshold ):
+        print "nr. of Ms", self.N_trans
         # total time for observation in hours
-        tWindow = ( obTimes[-1] - obtimes[0] )/3600.0 
+        tWindow = ( obTimes[-1] - obTimes[0] )/3600.0 
         # lists to hold the output
-        radecs, bandmags_list = [], []
+        radec, bandmags_list = [], []
         for mdwarf in self.transients:
             # determine activity status and set constants
             active = False
             # galactic height in parsecs
-            hZ = MW.get_galactice_height( mdwarf.LC_DEC, mdwarf.LC_RA, mdwarf.LC_Dist ) * 1.0e3 # parsecs
-            P_A = self.aval * np.exp( self.bval * hZ )  
+            hZ = MW.get_galactic_height( mdwarf.LC_DEC, mdwarf.LC_RA, mdwarf.LC_Dist ) * 1.0e3 # parsecs
+            P_A = self.aval * np.exp( -self.bval * hZ )  
             ztest = np.random.random()
             if ztest <= P_A: active = True
             if active: 
-                alf = self.alf_ac + self.da_dz * hZ
+                alf = self.alf_ac + self.da_dz * hZ / 1.e3	#da_dz is in kpc^-1
                 bet = self.bet_ac
                 eBins = self.dlogE_act
             else: 
-                alf = self.alf_in + self.da_dz * hZ
+                alf = self.alf_in + self.da_dz * hZ / 1.e3
                 bet = self.bet_in
                 eBins = self.dlogE_ina
             #Determine Flare Frequency
@@ -319,19 +327,26 @@ class Mdwarf_template( transientTemplate ):
             cond = z < ne - ne.astype(int)
             ne[cond] +=1
             nFlares = ne.astype(int)
-
-            if max( nFlares ) < 1: continue
+            
+            if max( nFlares ) < 1: 
+                self.N_trans -=1
             else:
                 lumlist = self.get_all_lums( nFlares, eBins, obTimes )
                 for j, lum in enumerate(lumlist):
-                    area = 4.0 * np.pi * np.power( mdwarf.LC_dist*1e3, 2.0 ) # pc^2
+                    area = 4.0 * np.pi * np.power( mdwarf.LC_Dist * 1e3 * pc_to_cm, 2.0 ) # cm^2
                     lum = -2.5 * np.log10( lum/area/self.flux_0[ self.allBands[j] ] )
+                    #print min(lum) - max(lum), self.allBands[j]
                     lumlist[j] = lum
-                if min( np.min(lumin) for lumin in lumlist ) < mag_lim:
+                    #the luminosity (in mags) of the quiescent star
+                    lum_non_outb = -2.5 * np.log10( self.Lq[self.allBands[j]]/area/self.flux_0[ self.allBands[j] ] )
+                if min( np.min(lumin) for lumin in lumlist ) < threshold and min( np.min(lumin) for lumin in lumlist ) < lum_non_outb - pm.mag_resolution:
                     radec.append([ mdwarf.LC_RA, mdwarf.LC_DEC ])
                     bandmags_list.append( lumlist )
+                    print lumlist, lum_non_outb, lumlist[0][0] - lum_non_outb
+                else:
+                    self.N_trans -=1
         return radec, bandmags_list
-    def get_all_lums( nFlares, eBins, obT ):
+    def get_all_lums(self, nFlares, eBins, obT ):
         lumlist = []
         window = obT[-1] - obT[0]
         nBands = len(self.allBands)
@@ -340,12 +355,27 @@ class Mdwarf_template( transientTemplate ):
         for i, n in enumerate(nF):
             thisE = np.power(10.0, eF[i])
             dts = np.random.random( n ) * window
+            #generate outbursts that started after t0
             for dt in dts:
                 tSamp = obT-dt
-                for j, bnd in enumerate(nBands):
-                    new_flux = self.broadbands[bnd]( tSamp )
-                    new_flux[ new_flux > 0.0 ] += (thisE - self.Epk[bnd])
-                    lum_matrix[j] += new_flux
+                for j, bnd in enumerate(self.allBands):
+                    if self.Epk[bnd] != 0:
+                        new_flux = ( thisE / self.Flare_energy ) * self.broadbands[bnd]( tSamp )
+                        lum_matrix[j] += new_flux
+            #generate outbursts that started before t0
+            a = 1
+            for i,x in enumerate(obT):	#How many observations can a burst comprise
+                if x > self.deltaT_LC:
+                    a = i
+                    break
+            dts = np.random.random( n ) * window
+            dts = dts[ dts < self.deltaT_LC * 24.*60.*60.]    #dts in seconds, deltaT_LC in days
+            for dt in dts:
+                tSamp = obT[:a]+dt
+                for j, bnd in enumerate(self.allBands):
+                    if self.Epk[bnd] != 0:
+                        new_flux = ( thisE / self.Flare_energy ) * self.broadbands[bnd]( tSamp )
+                        lum_matrix[j] += new_flux
         for i,row in enumerate(lum_matrix):
             lum_matrix[i] += self.Lq[ self.allBands[i] ]
         lumlist = [row for row in lum_matrix]

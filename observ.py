@@ -2,7 +2,7 @@ import numpy as np
 import csv
 from astLib import astCoords
 import MilkyWay as MW
-import params as pm
+import testparams as pm
 import transient as trns
 
 
@@ -234,14 +234,14 @@ class observation:
             if trTemp.N_trans > 0:
                 trTypes +=  [it, trTemp.tag]
                 it += 1
-                print trTemp.tag
                 radec, bandSets = trTemp.sample_all_LCs( obTimes, self.mag_lim )
+                if len(radec) == 0: continue
                 imax = i + len( radec )
                 trIds += range(i, imax)
                 radec_coords[i:imax] = radec
                 Nrbands = len(bandSets[0])
                 mags[ i:imax,:,:Nrbands] = np.array( [np.array(bS).T for bS in bandSets] )
-                print "lowest mag", np.max(mags)
+                print "lowest mag", np.min(bandSets)
                 i = imax
                 f = open( 'lc_data_test%s.dat' % trTemp.tag, 'wb' )
                 clc = csv.writer( f, delimiter = '\t' )
@@ -250,6 +250,9 @@ class observation:
                         data = [k] + [obTimes[j]] + [band[j] for band in bS]
                         clc.writerow(data)
                 f.close()
+        if i == 0: 
+            print "No transients found"
+            return
         # adjust radec, mag array
         radec_coords = radec_coords[0:imax,:]
         mags  = mags[:,:,0:imax]

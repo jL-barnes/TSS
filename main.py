@@ -1,10 +1,11 @@
 import numpy as np
-#from astLib import astCoords
-import params as pm
+#import params as pm
+import testparams as pm
 import observ as ob
 import transient as trns
 from Animation import AnimateSky
 #import MilkyWay as MW
+
 
 
 ###################################
@@ -34,15 +35,18 @@ for templ in transientZoo.transient_templates:
 
 transientZoo.populate()
 
+print templ.tag, templ.N_trans
+
+observingRun.take_data( transientZoo, pm.outfile )
 
 
 for temp in transientZoo.transient_templates:
     print temp.tag, temp.N_trans, temp.N_transnonsee
+print "To do:\n\tPhillips relation\n\tDust Extinction\n\tGive each Mdwarf a good quiescent luminosity in ergs"
 
-observingRun.take_data( transientZoo, pm.outfile )
-print "To do:\n\tPhillips relation\n\tDust Extinction"
+#AnimateSky()
 
-AnimateSky()
+
 #Construct_Animation()
 #Construct_ColorColor()
 

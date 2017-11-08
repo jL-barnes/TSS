@@ -23,10 +23,9 @@ nObs_per_day = 6         # number of observations per day
 # telescope capabilities
 
 mag_limit = 23.0           # limiting magnitude in most sensitive band
+mag_resolution = 0.1	   #Resolution of the telescope in magnitudes (in most sensitive band)
 color_system = 'UBVRI'
 
-# factor (Figure out what this is...)
-factor = 1.0
 
 # Transients to use. Set to zero to leave out of calculation.
 
@@ -35,18 +34,18 @@ use_CVpolar  = 0
 use_CVIP     = 0
 use_CVdwarf  = 0
 use_AMCVn    = 0
-use_SNIa     = 1
-use_M3       = 0
+use_SNIa     = 0
+use_M3       = 1
 use_M3_5     = 0
 use_M4       = 0
 use_kilonova = 0
 
 # File holding data for the transients:
 #transientFile = 'dataTransients.dat'
-
 transientFile = 'test.dat'
 
-
+# File holding data for M-dwarfs
+MDwarfFile = 'data_MDwarfs.dat'
 
 
 # parameters for the data display and output
