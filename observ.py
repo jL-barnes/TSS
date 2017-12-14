@@ -4,10 +4,11 @@ from astLib import astCoords
 import MilkyWay as MW
 import testparams as pm
 import transient as trns
+import cosmology as cm
 
 
 class cell:
-    def __init__( self, idx, raMid, decMid, distMid, hdist, hRA, hDEC ):
+    def __init__( self, idx, raMid, decMid, distMid, hdist, hRA, hDEC, z ):
         self.idx    = idx
         self.raMid  = raMid
         self.decMid = decMid
@@ -18,6 +19,7 @@ class cell:
         self.hDEC   = hDEC
         self.rho    = []
         self.vol    = 0.0
+        self.z      = z            # Redshift
     # a function to get the maximum variability in density over a cell
     def get_rho_var( self,raDec_key, midEdge_key ):
         keyfound = False
@@ -97,6 +99,9 @@ class grid:
         self.h_DMW       = self.Dmax_MK/float(N_dist)
         self.h_xgal      = (Dmax_xgal - self.Dmax_MK)/float(N_dist_xgal)
         self.cellGrid    = self.makeCellGrid( hRA, hDec, self.h_DMW, self.h_xgal )
+        if self.Dmax_xgal > self.Dmax_MK:	#i.e. there are extragalactic trans.
+            self.Cosmo = cm.Cosmology
+        #else: self.Cosmo = cm.NoCosmology
 
     def makeCellGrid( self, hRA, hDec, h_DMW, h_xgal ):
         cells = []
@@ -104,15 +109,17 @@ class grid:
             if k < self.N_DMW: 
                 mid_D = ( float(k) + 0.5) * h_DMW
                 dh = self.h_DMW
+                z = 0		#Redshift
             else:          
                 mid_D = self.Dmax_MK + ( float(k) - self.N_DMW + 0.5 ) * h_xgal
                 dh = h_xgal
+                z = self.Cosmo.get_redshift( mid_D )
             for j in range( self.N_DEC ):
                 mid_dec = self.DEC_lo + (float(j) + 0.5) * hDec
                 for i in range( self.N_RA ):
                     mid_ra = self.RA_lo + ( float(i)+0.5 ) * hRA                    
                     idx =  i + self.N_RA*j + self.N_RA*self.N_DEC*k
-                    newcell = cell( idx, mid_ra, mid_dec, mid_D, dh, hRA, hDec  )
+                    newcell = cell( idx, mid_ra, mid_dec, mid_D, dh, hRA, hDec, z  )
                     cells.append( newcell )
         return cells   
     def resize( self, deltaRhoMax, maxIter ):
@@ -170,8 +177,9 @@ class observation:
                      t_start, durObs, nPerDay ):
         # set up the transients list
         self.setTransientsList()
-        self.mag_lim = mag_lim
         # determine max distance (extra-galactic)
+        """   #old part with single mag_lim
+        self.mag_lim = mag_lim
         brightest = 100.0
         f = open( pm.transientFile, 'r' )
         while f.readline() != '\n':
@@ -179,11 +187,38 @@ class observation:
         for line in f:
             fields = line.split()
             if fields[0] in self.transientsList:
+                print fields[0]
                 if int(fields[1]) == 3:
                     pkmag, devmag = float(fields[6]), float(fields[7])
                     brightest = min(brightest, pkmag - 3.0*devmag)
         f.close()
         exp_term = 0.2*( self.mag_lim - brightest ) + 1.0
+        """
+        self.setUpColors( pm.color_system, pm.showbands )
+        self.mag_lim = [ mag_lim[ band ] for band in self.bands]
+        brightest = 100.0 * np.ones( len( self.bands ) )
+        f = open( pm.PeakMagFile, 'r' )
+        while f.readline() != '\n':
+            pass
+        for line in f:
+            fields = line.split()
+            if fields[0] in self.transientsList:
+                pkmag = {'U':fields[1], 'B':fields[2], 'V':fields[3], 'R':fields[4], 'I':fields[5], 'J':fields[6], 'H':fields[7], 'K':fields[8], 'u':fields[9], 'g':fields[10], 'r':fields[11], 'i':fields[12], 'z':fields[13]}
+                pkmag = np.array([ pkmag[ band ] for band in self.bands]).astype(float)
+                devmag = float(fields[14])
+                brightest = np.minimum(brightest, pkmag - 3.0*devmag)
+                """
+                if self.colorScheme == 'UBVRI':
+                    pkmag = np.array(fields[1:9]).astype(float)
+                    devmag = float(fields[14])
+                    brightest = np.minimum(brightest, pkmag - 3.0*devmag)
+                elif self.colorScheme == 'ugriz':
+                    pkmag = np.array(fields[9:14]).astype(float)
+                    devmag = float(fields[14])
+                    brightest = np.minimum(brightest, pkmag - 3.0*devmag)
+                """
+        f.close()
+        exp_term = 0.2*( max(self.mag_lim - brightest) ) + 1.0
         Dmax_xgal = np.power( 10.0, exp_term ) # parsecs
         Dmax_xgal /= 1.0e3 # kiloparsecs
         print "Dmax_xgal = %.2e Mpc\n" % (Dmax_xgal/1e3)
@@ -198,7 +233,8 @@ class observation:
         elif col.lower() == 'ugriz': colr = col.lower()
         else: print "Invalid color system selected."
         self.colorScheme = colr
-        self.bands = bands
+        self.bands = list(bands)
+        self.nBands = len(self.bands)
     def setTransientsList( self ):
         self.transientsList = []
         if pm.use_nova:     self.transientsList.append( 'nova' )
@@ -212,72 +248,85 @@ class observation:
         if pm.use_M4:       self.transientsList.append( 'M4' )
         if pm.use_kilonova: self.transientsList.append( 'kilonova' )
     def take_data( self, transientDataSet, outFile ):
-        obTimes = self.TimeParams.get_Dates()
-        tEnd = obTimes[-1]/8.64e4
-        nTimeSteps = len( obTimes )
+        self.obTimes = self.TimeParams.get_Dates()
+        tEnd = self.obTimes[-1]/8.64e4
+        nTimeSteps = len( self.obTimes )
         # how many transients do we have total? This assumes all are visible
         nTr_tot = 0
         for trTemp in transientDataSet.transient_templates:
             nTr_tot += trTemp.N_trans
-        # how many bands
-        if self.colorScheme == 'UBVRI': nBands = 8
-        elif self.colorScheme == 'ugriz': nBands = 5
         # an array for all the magnitude data
-        mags = np.zeros( [nTr_tot, nTimeSteps, nBands]  )
+        mags = np.zeros( [nTr_tot, nTimeSteps, self.nBands]  )
         radec_coords = np.zeros( [nTr_tot,2] )
         # loop over all transients
         i = 0
         it = 0
         trIds = []
         trTypes = []
+        types = []
         for trTemp in transientDataSet.transient_templates:
             if trTemp.N_trans > 0:
                 trTypes +=  [it, trTemp.tag]
-                it += 1
-                radec, bandSets = trTemp.sample_all_LCs( obTimes, self.mag_lim )
-                if len(radec) == 0: continue
+                radec, bandSets = trTemp.sample_all_LCs( self.obTimes, self.mag_lim )
+                if len(radec) == 0: 	#No transients for this type
+                    it +=1
+                    continue
                 imax = i + len( radec )
                 trIds += range(i, imax)
                 radec_coords[i:imax] = radec
                 Nrbands = len(bandSets[0])
                 mags[ i:imax,:,:Nrbands] = np.array( [np.array(bS).T for bS in bandSets] )
-                print "lowest mag", np.min(bandSets)
+                types.extend([it for i in range(i, imax)])
                 i = imax
-                f = open( 'lc_data_test%s.dat' % trTemp.tag, 'wb' )
-                clc = csv.writer( f, delimiter = '\t' )
-                for k, bS in enumerate(bandSets):
-                    for j in range( len(bS[0]) ):
-                        data = [k] + [obTimes[j]] + [band[j] for band in bS]
-                        clc.writerow(data)
-                f.close()
+                it += 1
         if i == 0: 
-            print "No transients found"
             return
-        # adjust radec, mag array
+        # adjust radec, mag array to exclude "null"-transients
         radec_coords = radec_coords[0:imax,:]
-        mags  = mags[:,:,0:imax]
-        mags[ mags > self.mag_lim ] = self.mag_lim + 0.01
+        mags  = mags[0:imax] 
+        #below_threshold = np.array(self.mag_lim) + 0.5 * pm.mag_resolution
+        below_threshold = np.max(self.mag_lim) + 0.5 * pm.mag_resolution
+        for i in range( self.nBands ):
+            mags[:,:,i][ mags[:,:,i] > self.mag_lim[i] ] = below_threshold
+
+        j=0
+        for i,trTemp in enumerate(transientDataSet.transient_templates):
+            if trTemp.N_trans > 0:
+                Bandsets = mags[ j : j + trTemp.N_trans]
+                j = trTemp.N_trans
+                self.writetofile(trTemp, Bandsets)
+
         nTr_tot = imax
         # set up output file
         f = open( outFile, 'wb' )
         # set up csv
         cwr = csv.writer( f, delimiter = '\t' )
-        cwr.writerow( trTypes + [1, 'thing_1', 2, 'alien_flashlights'] )
+        cwr.writerow( trTypes)# + [1, 'thing_1', 2, 'alien_flashlights'] )
+        """
         if self.colorScheme == 'UBVRI':
-            hdrs = ['iD','type','time', 'RA', 'DEC'] + [b for b in self.colorScheme] + ['J','H','K']
+            hdrs = ['iD','type','time', 'RA', 'DEC'] + [b for b in self.bands]#[b for b in self.colorScheme] + ['J','H','K']
         elif self.colorScheme == 'ugriz':
-            hdrs = ['iD','type','time', 'RA', 'DEC'] + [b for b in self.colorScheme]
+            hdrs = ['iD','type','time', 'RA', 'DEC'] + [b for b in self.colorScheme] 
+        """
+        hdrs = ['iD','type','time', 'RA', 'DEC'] + [b for b in self.bands]
         cwr.writerow(hdrs)
         # write out data
-        types = [int(z) for z in 3.0*np.random.random(size = nTr_tot)]
         for i in range( nTimeSteps ):
             for j in range( nTr_tot ):
                 radec = radec_coords[j]
                 bandDat = mags[j,i,:]
-                type = int(np.random.random()*3)
-                if min(bandDat) <= self.mag_lim:
-                    allDat = [trIds[j], types[j]] +  [obTimes[i]] + radec.tolist() + bandDat.tolist()
+                if min(bandDat) <= max(self.mag_lim):
+                    allDat = [trIds[j], types[j]] +  [self.obTimes[i]] + radec.tolist() + bandDat.tolist()
                     cwr.writerow( allDat )
+        f.close()
+
+    def writetofile(self, trTemp, bandSets):
+        f = open( 'lc_data_test%s.dat' % trTemp.tag, 'wb' )
+        clc = csv.writer( f, delimiter = '\t' )
+        for k, bS in enumerate(bandSets):
+            for j in range( len(bS[0]) ):
+                data = [k] + [self.obTimes[j]] + [band[j] for band in bS]
+                clc.writerow(data)
         f.close()
 
 

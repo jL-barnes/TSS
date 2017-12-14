@@ -7,7 +7,7 @@ from matplotlib.colors import ColorConverter
 from matplotlib import rcParams
 from matplotlib import rc
 from astLib import astCoords
-import params as pm
+import testparams as pm
 
 rcParams.update({'figure.autolayout':True})
 #rc('font',**{'family':'serif', 'serif':['Palatino']})
@@ -18,7 +18,7 @@ mag_lim = pm.mag_limit
 band_colors = {'U':'Violet', 'B':'Blue', 'V':'Green', 'R':'Red', 'I':'Orange', 'J':'Pink',\
                'H':'Brown', 'K':'Gray'}
 
-markerList = ['o','s','p','*','^','D','x']
+markerList = ['o','s','p','*','^', 'v', 'D','x', '<', '>', 8, '+','|']
 
 
 myCC = ColorConverter()
@@ -38,7 +38,11 @@ class AnData:
         self.ra_max = np.ceil( 2*np.max(ras))/2.0
         self.dec_min = np.floor( 2*np.min(decs))/2.0
         self.dec_max = np.ceil( 2*np.max(decs))/2.0
-        col_ids = [0,1,3,4] + [ hdr.index( bnd ) for bnd in bandList ]
+        self.nBands = len(bandList)
+        #col_ids = [0,1,3,4] + [ hdr.index( bnd ) for bnd in bandList ]
+        col_idstypes = np.array([0,1,3,4])
+        col_idsbands = np.linspace( 5 , 5 + self.nBands - 1 , self.nBands ).astype(int) 
+        col_ids = np.append(col_idstypes, col_idsbands)
         self.timeFrames = [ data[data[:,2] == t][:,col_ids] for t in tm ]
         self.times = tm
         dt = (tm[1] - tm[0])/8.64e4
@@ -73,12 +77,13 @@ class AnData:
 class Animated:
     def __init__(self, dataFile, bandlist):
         if len(bandlist) <= 3:
-            n_row, n_col = 1, len(bandlist) 
+            n_row, n_col = 1, len(bandlist)
         else:
-            n_col = 2
+            n_col = 2 
             n_row = (len(bandlist)+1)/2
-        fig_x, fig_y = n_col*4.5, n_row*4.5 + 1
-        self.fig, self.axs = plt.subplots( n_row, n_col, figsize = (fig_x, fig_y) )
+        fig_x, fig_y = n_col*4.5 , n_row*4.5 + 1 
+
+        self.fig, self.axs = plt.subplots( n_row, n_col, figsize = (fig_x, fig_y), sharey=True )
         self.bot = 1.0/fig_y
         self.fig.subplots_adjust( bottom = self.bot )
         self.axs = self.axs.flatten()
@@ -91,7 +96,7 @@ class Animated:
             self.axs[i].set_ylabel( 'DEC' )
         for j in range( self.data.nTrTypes):
             self.axs[0].scatter([],[],color='k',alpha = 0.5, s = 60,  marker = markerList[j], label=self.data.trNames[j] )
-        self.axs[0].legend( frameon=True, loc='upper left', bbox_to_anchor = [0.1,self.bot],\
+        self.axs[0].legend( frameon=True, loc=3, bbox_to_anchor = [0.1,self.bot],\
                                 handletextpad=0.5, scatterpoints=1, bbox_transform=self.fig.transFigure )
         self.fig.set_tight_layout(True)
         self.bands = bandlist
@@ -100,19 +105,21 @@ class Animated:
         size_max = 200.0
         self.scatters = []
         self.timetext = ''
-        self.size_grad = (size_max - self.size_min)/(self.data.mag_norm -mag_lim)
+        self.size_grad = {}
+        for band in self.bands:
+            self.size_grad[band] = (size_max - self.size_min)/(self.data.mag_norm -mag_lim[band])
         self.alpha_grad = 0.85/self.data.dmdt_max
         self.anim = animation.FuncAnimation(  self.fig, self.update, np.arange(self.data.n_frames),\
                                               init_func=self.plot_init, repeat=False)
     def plot_init( self ):
         init_dat, init_t = self.data.timeFrames[0], self.data.times[0]
-        for i in range( self.nBands ):
+        for i,band in enumerate( self.bands ):
             this_type, this_ra, this_dec, this_mag, this_dmdt = init_dat[init_dat[:,i+4] <= mag_lim].T[[1,2,3,i+4,i+4+self.nBands]]
             this_pos = np.column_stack( (this_ra, this_dec) )
             this_type = np.array( this_type, dtype = int )
             # alpha => rate of change
             # size => brightness
-            sizes = self.size_min + (this_mag-mag_lim)*self.size_grad
+            sizes = self.size_min + (this_mag-mag_lim[band])*self.size_grad[band]
             rgba_cols = np.zeros( [len(this_ra), 4] )
             rgba_cols[:,0:3] = myCC.to_rgb(band_colors[self.bands[i]])
             rgba_cols[:,-1] = 0.15 + self.alpha_grad * this_dmdt
@@ -127,12 +134,12 @@ class Animated:
         return self.scatters, self.timetext     
     def update( self, frame_no ):
         dat, t = self.data.timeFrames[frame_no], self.data.times[frame_no]
-        for i in range( self.nBands ):
-            this_type, this_ra, this_dec, this_mag, this_dmdt = dat[dat[:,i+4] <= mag_lim].T[[1,2,3,i+4,i+4+self.nBands]]
+        for i,band in enumerate( self.bands ):
+            this_type, this_ra, this_dec, this_mag, this_dmdt = dat[dat[:,i+4] <= mag_lim[band]].T[[1,2,3,i+4,i+4+self.nBands]]
             this_pos = np.column_stack( (this_ra, this_dec) )
             this_type = np.array( this_type, dtype=int )
             #sizes = self.size_min + (this_mag-mag_lim)*self.size_grad
-            sizes = self.size_min + (this_mag-mag_lim)*self.size_grad
+            sizes = self.size_min + (this_mag-mag_lim[band])*self.size_grad[band]
             rgba_cols = np.zeros( [len(this_ra), 4] )
             rgba_cols[:,0:3] = myCC.to_rgb(band_colors[self.bands[i]])
             rgba_cols[:,-1] = 0.15 + self.alpha_grad * this_dmdt
@@ -159,3 +166,4 @@ def AnimateSky():
 def AnimateFile( skyfile, bList ):
     an = Animated( skyfile, bList )
     an.show()
+

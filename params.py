@@ -4,7 +4,7 @@ A parameter file for the Transient Sky Simulator
 
 # Parameters for the observation
 
-# size of the window
+# size of the window (in JD2000)
 
 RA_lo  = "14:10:00" 
 RA_hi  = "14:30:00"
@@ -22,7 +22,7 @@ nObs_per_day = 6         # number of observations per day
 
 # telescope capabilities
 
-mag_limit = 23.0           # limiting magnitude in most sensitive band
+mag_limit = {'U':23.0, 'B':23.0, 'V':23.0, 'R':23.0, 'I':23.0, 'J':23.0, 'H':23.0, 'K':23.0, 'u':23.0, 'g':23.0, 'r':23.0, 'i':23.0, 'z':23.0}           # limiting magnitude in each band
 mag_resolution = 0.1	   #Resolution of the telescope in magnitudes (in most sensitive band)
 color_system = 'UBVRI'
 
@@ -34,15 +34,18 @@ use_CVpolar  = 0
 use_CVIP     = 0
 use_CVdwarf  = 0
 use_AMCVn    = 0
-use_SNIa     = 0
-use_M3       = 1
+use_SNIa     = 1
+use_M3       = 0
 use_M3_5     = 0
 use_M4       = 0
 use_kilonova = 0
 
 # File holding data for the transients:
-#transientFile = 'dataTransients.dat'
-transientFile = 'test.dat'
+transientFile = 'dataTransients.dat'
+#transientFile = 'test.dat'
+
+#File holding the peak magnitudes for the transients:
+PeakMagFile = 'peakmagsTransients.dat'
 
 # File holding data for M-dwarfs
 MDwarfFile = 'data_MDwarfs.dat'
