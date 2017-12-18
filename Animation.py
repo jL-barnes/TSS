@@ -7,7 +7,7 @@ from matplotlib.colors import ColorConverter
 from matplotlib import rcParams
 from matplotlib import rc
 from astLib import astCoords
-import testparams as pm
+import params as pm
 
 rcParams.update({'figure.autolayout':True})
 #rc('font',**{'family':'serif', 'serif':['Palatino']})

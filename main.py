@@ -1,6 +1,6 @@
 import numpy as np
 #import params as pm
-import testparams as pm
+import params as pm
 import observ as ob
 import transient as trns
 from Animation import AnimateSky

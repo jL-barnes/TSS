@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.interpolate import interp1d
 import h5py
-import testparams as pm
+import params as pm
 import MilkyWay as MW
 
 year_to_seconds = 8.64e4 * 365.25
@@ -37,7 +37,8 @@ class TransientSet:
     def populate_galactic(self, galIdx):
         galTrans = [ tr for tr in self.transient_templates if tr.galType != 3 ]
         cells_galactic = self.grid.cellGrid[0:galIdx]
-        for gtr in galTrans: 
+        i = 0
+        for gtr in galTrans:
             D_gal_max = gtr.Max_obs_D * 1.e-3 #kpc
             for c in cells_galactic:
                 if D_gal_max < c.DMid + c.hD: break	#A transient past this distance won't be visible anyway
@@ -45,8 +46,9 @@ class TransientSet:
     def populate_xgal( self, galIdx ):
         xgalTrans = [ tr for tr in self.transient_templates if tr.galType == 3 ]
         cells_xgal = self.grid.cellGrid[galIdx:]
-        for c in cells_xgal:
-            for xtr in xgalTrans:
+        for xtr in xgalTrans:
+            self.grid.Cosmo.create_Nr_density_funct(xtr.NM, xtr.alpha) 
+            for c in cells_xgal:
                 xtr.get_blueprints( c, self.deltaT_obs, self.mag_lim )
             
 def makeTemplate( tag, mag_lim ):
@@ -281,7 +283,6 @@ class Mdwarf_template( transientTemplate ):
         self.Lq            = {'U':qs[0],'B':qs[1],'V':qs[2],'R':qs[3],'I':qs[4],'J':qs[5],'H':qs[6],'K':qs[7],'u':qs[8],'g':qs[9],'r':qs[10],'i':qs[11],'z':qs[12]}
         self.Flare_energy  = float( trData[11] )
         self.Epk           = {}
-        ######################Create a max obs here, then swap for-loops in populate_galactic and create an if-statement there for each cell. If larger than max obs dist: break
         self.Max_obs_D     =  Maximum_observing_distance(mag_lim, self.peak_mag, self.std_mag)
     def get_blueprints( self, c, dtObs, mag_lim ):
         N_transients = self.get_Ntransients( c )
@@ -408,10 +409,13 @@ class Mdwarf_template( transientTemplate ):
 class xgal_template( transientTemplate  ):
     def __init__( self, tag, trData, PkMData ):
         transientTemplate.__init__( self, tag, trData, PkMData )
-        self.stellarNrm = float(trData[6])
+        #self.stellarNrm = 4.*4.0e-14
+        self.NM = float(trData[6])
+        self.alpha = float(trData[12])
     def get_Ntransients( self, cell ):
         kpc3 = cell.vol
-        N_per_y = kpc3 * self.stellarNrm
+        N_per_y = kpc3 * cell.Cosmo.Nr_density_xtr( cell.z) 
+        #N_per_y = kpc3 * self.stellarNrm	#Non-cosmological
         if N_per_y > 2.0:
             NTr = int( N_per_y )
         else: NTr = geometricP( N_per_y )

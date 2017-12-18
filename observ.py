@@ -2,24 +2,25 @@ import numpy as np
 import csv
 from astLib import astCoords
 import MilkyWay as MW
-import testparams as pm
+import params as pm
 import transient as trns
 import cosmology as cm
 
 
 class cell:
-    def __init__( self, idx, raMid, decMid, distMid, hdist, hRA, hDEC, z ):
+    def __init__( self, idx, raMid, decMid, distMid, hdist, hRA, hDEC, z, Grid):
         self.idx    = idx
         self.raMid  = raMid
         self.decMid = decMid
-        self.DMid   = distMid
+        self.DMid   = distMid      # Luminosity distance of middle of cell
         self.hD     = hdist        # size of the cell in the distance direction
                                    # (differs between galactic and non-galactic)
         self.hRA    = hRA
         self.hDEC   = hDEC
         self.rho    = []
         self.vol    = 0.0
-        self.z      = z            # Redshift
+        self.z      = z            # Median redshift of the cell
+        self.Cosmo  = Grid.Cosmo
     # a function to get the maximum variability in density over a cell
     def get_rho_var( self,raDec_key, midEdge_key ):
         keyfound = False
@@ -60,12 +61,22 @@ class cell:
     def setDensity( self ):
         self.rho = MW.get_MW_dens( [self.raMid, self.decMid, self.DMid], piecewise = True )
     def setVolume( self ):
+        """
+        Calculate the (comoving) volume of the cell
+        V_C = (1+z)^3 \int D^2 sin(delta) dD dalpha ddelta
+        t1: integral over alpha / 3.0
+        t2: integral over D * 3.0
+        t3: integral over delta
+        t4: cosmological factor (=1 if z=0)
+        """
+        
         t1 = np.deg2rad( self.hRA )/3.0
         t2 = np.power( self.DMid + 0.5*self.hD, 3.0 ) - np.power( self.DMid - 0.5*self.hD, 3.0 );
         cos_DEChi = np.cos( np.deg2rad( self.decMid + 0.5*self.hDEC ) )
         cos_DEClo = np.cos( np.deg2rad( self.decMid - 0.5*self.hDEC ) )
         t3 = np.abs( cos_DEChi - cos_DEClo )
-        self.vol = t1*t2*t3
+        t4 = np.power( 1 + self.z, 3.)
+        self.vol = t1*t2*t3*t4
     def sampleCoords( self ):
         z1 = np.random.random()
         z2 = np.random.random()
@@ -98,10 +109,10 @@ class grid:
         hRA, hDec        = (rA_hi-rA_lo)/float(self.N_RA), (dEC_hi-dEC_lo)/float(self.N_DEC)
         self.h_DMW       = self.Dmax_MK/float(N_dist)
         self.h_xgal      = (Dmax_xgal - self.Dmax_MK)/float(N_dist_xgal)
-        self.cellGrid    = self.makeCellGrid( hRA, hDec, self.h_DMW, self.h_xgal )
         if self.Dmax_xgal > self.Dmax_MK:	#i.e. there are extragalactic trans.
-            self.Cosmo = cm.Cosmology
+            self.Cosmo = cm.Cosmology(Dmax_xgal)
         #else: self.Cosmo = cm.NoCosmology
+        self.cellGrid    = self.makeCellGrid( hRA, hDec, self.h_DMW, self.h_xgal )
 
     def makeCellGrid( self, hRA, hDec, h_DMW, h_xgal ):
         cells = []
@@ -113,13 +124,13 @@ class grid:
             else:          
                 mid_D = self.Dmax_MK + ( float(k) - self.N_DMW + 0.5 ) * h_xgal
                 dh = h_xgal
-                z = self.Cosmo.get_redshift( mid_D )
+                z = self.Cosmo.get_redshift( mid_D / 1.e3 )	#convert to Mpc
             for j in range( self.N_DEC ):
                 mid_dec = self.DEC_lo + (float(j) + 0.5) * hDec
                 for i in range( self.N_RA ):
                     mid_ra = self.RA_lo + ( float(i)+0.5 ) * hRA                    
                     idx =  i + self.N_RA*j + self.N_RA*self.N_DEC*k
-                    newcell = cell( idx, mid_ra, mid_dec, mid_D, dh, hRA, hDec, z  )
+                    newcell = cell( idx, mid_ra, mid_dec, mid_D, dh, hRA, hDec, z , self )
                     cells.append( newcell )
         return cells   
     def resize( self, deltaRhoMax, maxIter ):

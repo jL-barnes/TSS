@@ -1,5 +1,5 @@
 import numpy as np
-import testparams as pm
+import params as pm
 #https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/LCYHJG
 #source of dustmaps-package fro Green et al.
 #http://dustmaps.readthedocs.io/en/latest/_modules/dustmaps/bayestar.html#BayestarQuery
