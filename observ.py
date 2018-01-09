@@ -133,6 +133,7 @@ class grid:
                     newcell = cell( idx, mid_ra, mid_dec, mid_D, dh, hRA, hDec, z , self )
                     cells.append( newcell )
         return cells   
+    # adjust this function to allow for variable cell sizes
     def resize( self, deltaRhoMax, maxIter ):
         ri = 0
         while ri < maxIter:
