@@ -5,6 +5,7 @@ import MilkyWay as MW
 import params as pm
 import transient as trns
 import cosmology as cm
+import dust
 
 
 class cell:
@@ -20,7 +21,7 @@ class cell:
         self.rho    = []
         self.vol    = 0.0
         self.z      = z            # Median redshift of the cell
-        self.Cosmo  = Grid.Cosmo
+        self.Grid   = Grid	   # The grid to which this cell belongs to
     # a function to get the maximum variability in density over a cell
     def get_rho_var( self,raDec_key, midEdge_key ):
         keyfound = False
@@ -87,7 +88,8 @@ class cell:
         return [randRA, randDEC, randDist]
 
 class grid:
-    def __init__(self, RA_lo, RA_hi, DEC_lo, DEC_hi, Dmax_xgal, N_dist, N_dist_xgal ):
+    def __init__(self, RA_lo, RA_hi, DEC_lo, DEC_hi, Dmax_xgal, N_dist, 
+                 N_dist_xgal, Gal_trans, Xgal_trans):
         rA_lo      = astCoords.hms2decimal(RA_lo,":")
         rA_hi      = astCoords.hms2decimal(RA_hi,":")
         dEC_lo     = astCoords.dms2decimal(DEC_lo,":")
@@ -109,10 +111,13 @@ class grid:
         hRA, hDec        = (rA_hi-rA_lo)/float(self.N_RA), (dEC_hi-dEC_lo)/float(self.N_DEC)
         self.h_DMW       = self.Dmax_MK/float(N_dist)
         self.h_xgal      = (Dmax_xgal - self.Dmax_MK)/float(N_dist_xgal)
-        if self.Dmax_xgal > self.Dmax_MK:	#i.e. there are extragalactic trans.
+        self.Gal_trans	 = Gal_trans    #Whether there are Gal transients
+        self.Xgal_trans  = Xgal_trans	#Whether there are Xgal transients
+        if self.Xgal_trans:
             self.Cosmo = cm.Cosmology(Dmax_xgal)
-        #else: self.Cosmo = cm.NoCosmology
+        #   self.Cosmo = cm.NoCosmology
         self.cellGrid    = self.makeCellGrid( hRA, hDec, self.h_DMW, self.h_xgal )
+        self.choose_dust_grid()
 
     def makeCellGrid( self, hRA, hDec, h_DMW, h_xgal ):
         cells = []
@@ -122,9 +127,10 @@ class grid:
                 dh = self.h_DMW
                 z = 0		#Redshift
             else:          
-                mid_D = self.Dmax_MK + ( float(k) - self.N_DMW + 0.5 ) * h_xgal
-                dh = h_xgal
-                z = self.Cosmo.get_redshift( mid_D / 1.e3 )	#convert to Mpc
+                if self.Xgal_trans:
+                    mid_D = self.Dmax_MK + ( float(k) - self.N_DMW + 0.5 ) * h_xgal
+                    dh = h_xgal
+                    z = self.Cosmo.get_redshift( mid_D / 1.e3 )	#convert to Mpc
             for j in range( self.N_DEC ):
                 mid_dec = self.DEC_lo + (float(j) + 0.5) * hDec
                 for i in range( self.N_RA ):
@@ -171,6 +177,58 @@ class grid:
             cell.setVolume()
             if cell.idx < galIdx:
                 cell.setDensity()
+    def choose_dust_grid( self ):
+        """
+        Choose the right dust grid
+        For extragalactic transients (and galactic transients with D>60kpc)
+         we choose the Schlegel map
+        For galactic transients it is possible that the FOV is included in
+         the Schultheis as well as the Green map. Then Schultheis gets
+         priority
+        """
+        query_works = dust.query_works()
+        coordboundaries = (self.RA_lo, self.RA_hi, self.DEC_lo, self.DEC_hi)
+
+        if not query_works:
+            print "We cannot query the Argonaut server for 3D dust extinction"
+
+        if query_works and pm.use_dust:
+            self.Xtr_dust = dust.Schlegel_Extinction(*coordboundaries)
+        else:
+            print "We'll have to exclude dust extinction for extragalactic transients in the simulation"
+            self.Xtr_dust = dust.No_dust()
+
+        if self.Gal_trans and pm.use_dust:
+            if query_works:
+                if dust.InSchultheisBoundary(*coordboundaries):
+                    self.Gal_dust = dust.Schultheis_Extinction(self.Xtr_dust, *coordboundaries)
+                elif dust.InGreenBoundary(*coordboundaries):
+                    self.Gal_dust = dust.Green_Extinction(self.Xtr_dust, *coordboundaries)
+                else:
+                    self.Gal_dust = self.Xtr_dust
+            else:
+                self.Gal_dust = dust.No_dust()
+                print  "We'll have to exclude dust extinction for galactic transients in the simulation"
+        else:
+            self.Gal_dust = dust.No_dust()
+            print  "We'll have to exclude dust extinction for galactic transients in the simulation"
+            
+
+        """
+        if dust.query_works() and pm.use_dust:
+            if dust.InSchultheisBoundary(*coordboundaries):
+                self.Gal_dust = dust.Schultheis_Extinction(*coordboundaries)
+            elif dust.InGreenBoundary(*coordboundaries):
+                self.Gal_dust = dust.Green_Extinction(*coordboundaries)
+            else:
+                self.Gal_dust = self.Xtr_dust
+        else:
+            if dust.InSchultheisBoundary(*coordboundaries) and pm.use_dust:
+                self.Gal_dust = dust.Schultheis_Extinction(*coordboundaries)
+            else:
+                self.Gal_dust = self.Xtr_dust
+        """
+
 class timeFrame:
     def __init__( self, t_start, durObs, nPerDay ):
         self.t_start = t_start * 8.64e4
@@ -208,6 +266,7 @@ class observation:
         self.setUpColors( pm.color_system, pm.showbands )
         self.mag_lim = [ mag_lim[ band ] for band in self.bands]
         brightest = 100.0 * np.ones( len( self.bands ) )
+        Gal_trans, Xgal_trans = False, False 
         f = open( pm.PeakMagFile, 'r' )
         while f.readline() != '\n':
             pass
@@ -218,6 +277,12 @@ class observation:
                 pkmag = np.array([ pkmag[ band ] for band in self.bands]).astype(float)
                 devmag = float(fields[14])
                 brightest = np.minimum(brightest, pkmag - 3.0*devmag)
+                trData = getFileLine( pm.transientFile, fields[0] )
+                Galtype = int( trData[0] )
+                if Galtype in [0,1,2]:
+                    Gal_trans = True	#There are galactic transients
+                if Galtype == 3:
+                    Xgal_trans = True	#There are extragalactic transients
                 """
                 if self.colorScheme == 'UBVRI':
                     pkmag = np.array(fields[1:9]).astype(float)
@@ -235,7 +300,7 @@ class observation:
         print "Dmax_xgal = %.2e Mpc\n" % (Dmax_xgal/1e3)
         # set the properties of the sky window
         self.SkyGrid = grid( RA_lo, RA_hi, DEC_lo, DEC_hi, Dmax_xgal, N_dist_MW,\
-                                 N_dist_xgal )
+                                 N_dist_xgal, Gal_trans, Xgal_trans )
         #self.SkyGrid.resize( 2.0, 1 )
         self.SkyGrid.setCellValues()
         self.TimeParams = timeFrame( t_start, durObs, nPerDay )
@@ -340,4 +405,13 @@ class observation:
                 clc.writerow(data)
         f.close()
 
-
+def getFileLine( file, tag ):
+    f = open( file, 'r' )
+    while f.readline() != '\n':
+        pass
+    data = f.readline()
+    while data.split()[0] != tag:
+        data = f.readline()
+    restOfData = data.split()[1:]
+    f.close()
+    return restOfData

@@ -9,6 +9,12 @@ Mostly follows David Hogg's pedagogical paper arXiv:astro-ph/9905116v4 .
 Distance units are Mpc, time units are seconds.
 
 """
+import math
+import numpy
+import scipy
+import scipy.integrate as si
+import scipy.interpolate
+import scipy.optimize
 
 yr_s = 365. * 24. * 60. * 60. 
 Gyr_s = 1.e9 * yr_s  
@@ -19,13 +25,6 @@ c_light_Mpc_Gyr = Gyr_s * c_light_cm_s / Mpc_cm # Mpc / Gyr
 H100_s = 100. / Mpc_km # s^-1 
 c_light_Mpc_s = c_light_cm_s / Mpc_cm # Mpc / s
 
-import math
-
-import numpy
-import scipy
-import scipy.integrate as si
-import scipy.interpolate
-import scipy.optimize
 
 
 def get_omega_k_0(**cosmo):

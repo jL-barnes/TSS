@@ -5,11 +5,28 @@ A parameter file for the Transient Sky Simulator
 # Parameters for the observation
 
 # size of the window (in JD2000)
+"""
+RA_lo  = "14:10:00" 
+RA_hi  = "14:30:00"
+DEC_lo = "20:00:00"
+DEC_hi = "25:00:00"
 
 RA_lo  = "14:10:00" 
 RA_hi  = "14:30:00"
 DEC_lo = "20:00:00"
 DEC_hi = "25:00:00"
+
+RA_lo  = "17:43:40" 
+RA_hi  = "17:47:40"
+DEC_lo = "-27:00:28"
+DEC_hi = "-31:00:28"
+"""
+RA_lo  = "17:43:40" 
+RA_hi  = "17:47:40"
+DEC_lo = "-37:00:28"
+DEC_hi = "-41:00:28"
+
+
 nCells_D = 1000          # number of cells in the distance direction (galactic)
 nCells_xgal = int(1e4)   # number of cells in the distance directions (extragalactic)
 
@@ -29,13 +46,13 @@ color_system = 'UBVRI'
 
 # Transients to use. Set to zero to leave out of calculation.
 
-use_nova     = 1
+use_nova     = 0
 use_CVpolar  = 0
 use_CVIP     = 0
 use_CVdwarf  = 0
 use_AMCVn    = 0
-use_SNIa     = 1
-use_M3       = 0
+use_SNIa     = 0
+use_M3       = 1
 use_M3_5     = 0
 use_M4       = 0
 use_kilonova = 0
@@ -55,3 +72,5 @@ MDwarfFile = 'data_MDwarfs.dat'
 outfile = 'test_SNIa.dat'
 # band to show in animation. Must be consistent with choice of color system above.
 showbands = 'BRI'  
+# should we use dust extinction in the calculations?
+use_dust = False
