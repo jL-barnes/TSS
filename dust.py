@@ -18,7 +18,6 @@ RV_BV = {'U':4.334, 'B':3.626, 'V':2.742, 'R':2.169, 'I':1.505, 'J':0.764, 'H':0
 #3.1 at http://iopscience.iop.org/article/10.1088/0004-637X/737/2/103#apj398709t6
 RV_JK = { key: RV_BV[key] * 1.748 for key in RV_BV.keys() }
 emptyval = 1000.0
-#E(B-V) = 1.748 * E(J-KS)
 
 class Green_Extinction:
     def __init__(self, Xtr_dust, RA_lo, RA_hi, DEC_lo, DEC_hi):
@@ -70,7 +69,7 @@ class Green_Extinction:
         Subsequently we convert the 2D grid of Bestfit into a 3D grid
         We add data points for a distance modulus of zero (we assume 
          the EBV at d=0 to be zero)
-        And finally we INterpolate this grid
+        And finally we Interpolate this grid with linear interpolation
         If one samples a coordinate outside the interpolation 
          boundaries, it will return the value -100 
         """
@@ -103,7 +102,8 @@ class Green_Extinction:
 
         self.queried = True
 
-        return RegularGridInterpolator((ra,dec,D), EBV, 
+        return RegularGridInterpolator((ra,dec,D), EBV,
+                                       method='linear',  
                                        bounds_error = False, 
                                        fill_value = emptyval)
 
@@ -194,8 +194,10 @@ class Schultheis_Extinction:
         Input:
         ra: RA-coordinate in degrees
         dec: DEC-coordinate in degrees
-        D: distance to transient in pc
+        D: distance to transient in kpc
         """
+        D = D 
+        #lon, lat = 0,0
         lon, lat = astCoords.convertCoords( "J2000", "GALACTIC", ra, dec, 2000 )
         if lon > 180: lon -= 360	#Here lon runs from -180 to 180
         A = {}
@@ -205,10 +207,7 @@ class Schultheis_Extinction:
         else:
             for color in self.bands:
                 A[color] = float(EJK) * RV_JK[color] 
-        return A   
-
-    def Sample_extinction2(self, ra, dec, D):
-        return {"B":0.1, "R":0.2, "I":0.3}
+        return A 
 
     def Setup_dust_grid(self):
         """
@@ -216,17 +215,21 @@ class Schultheis_Extinction:
         This file is a preprocessed version of the file provided
          by Schultheis et al. (2014)
         We interpolate this grid using the RegularGrindInterpolator
+        This is done with the nearest neighbor method, because
+         Schultheis et al. calculated extinction in bins
         If one samples a coordinate outside the interpolation 
          boundaries, it will return the value -100 
         """
         EJK = np.array(self.Bulge_file['EJK'][:])
         lon = np.array(self.Bulge_file['LON'][:])
         lat = np.array(self.Bulge_file['LAT'][:])
-        D   = np.array(self.Bulge_file['DIST'][:])
+        D   = np.array(self.Bulge_file['DIST'][:]) /1000.	#to kpc
         self.queried = True
-        return RegularGridInterpolator((lon, lat, D), EJK, 
+        return RegularGridInterpolator((lon, lat, D), EJK,
+                                       method='nearest', 
                                        bounds_error = False, 
                                        fill_value = emptyval)
+
 
 
 

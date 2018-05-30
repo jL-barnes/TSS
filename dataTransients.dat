@@ -1,16 +1,20 @@
-# name    # 0 = galactic     # in thin   # in thick   # in      # in       # LC file      N per kpc-3 (solar   scale height    	bright     freq (days)    freq. std.   Energy in    DTD
-  	    1 = gal,recur       disk?        disk?      bulge?   halo                      neighborhood)     (thin disk, kpc)	time	   (gal-recur)    dev.(days)   U-band of    slope
-	    2 = Mdwarf                                                                    OR N per M_sun                        (days)		                       flare in
-	    3 = extragal                                                                   (xgal)			 		                               file (erg)
-========================================================================================================================================================================================================
+# name    # 0 = galactic     # in thin   # in thick   # in      # in       # LC file      N per kpc-3 (solar   scale height    	LC         freq (days)    freq. std.   Energy in    DTD	
+  	    1 = gal,recur       disk?        disk?      bulge?   halo                      neighborhood)     (thin disk, kpc)	duration   (gal-recur)    dev.(days)   U-band of    slope 
+	    2 = Mdwarf                                                                    OR N per M_sun                        (days)		                       flare in     If no DTD       
+	    3 = Xgal w/ Kcor                                                                  (xgal)			 		                               file (erg)   -> set 0.0
+            4 = Xgal w/o Kcor
+=========================================================================================================================================================================================
 
 nova	          0               1          1             1         1      nova	       4.62e-2          0.3          	400.0	      0.0            0.0       0.0           0.0
 CVpolar	          1               1          0             1         1      CVPolar_LCs.npy    5.00e2	        0.26 	 	10.0          0.0            0.0       0.0           0.0
 CVIP	          0	          1          0             1         1      CVIP_LCs.npy       3.00e2	        0.26	 	10.0          0.0	     0.0       0.0           0.0
 CVdwarf	          1	          1          0             1         1      U_Gem              5.6e3	        0.12	 	20.0          49.47	     15.38     0.0           0.0
 AMCVn	          0	          1          0             1         1      AMCVn_LCs.npy      5.0e2	        0.3		10.0 	      0.0	     0.0       0.0           0.0
-SNIa	          3	          0          0             0         0      SNIa               1.3e-3	        0.3		100.0 	      0.0	     0.0       0.0          -1.1
-M3	          2	          1          1             1         1      AD_Leo             5.95e5	        0.3		2.0 	      0.0	     0.0       6.31e33       0.0
-M3_5	          2	          1          1             1         1      M3_5_LCs.npy       5.95e6	        0.3		2.0 	      0.0	     0.0       6.17e32       0.0
+SNIa	          3	          0          0             0         0      nugent-sn1a        1.3e-3	        0.3		270.0 	      0.0	     0.0       0.0          -1.1   
+SNIb	          3	          0          0             0         0      snana-2007y        0.63e-3	        0.3		531.5 	      0.0	     0.0       0.0           0.0  
+SNIc	          3	          0          0             0         0      snana-2004fe       1.20e-3	        0.3		524.6 	      0.0	     0.0       0.0           0.0  
+SNIIL	          3	          0          0             0         0      s11-2004hx         0.55e-3	        0.3		297.0 	      0.0	     0.0       0.0           0.0 
+SNIIP	          3	          0          0             0         0      snana-2007kw       4.0e-3	        0.3		325.8 	      0.0	     0.0       0.0           0.0 
+M3	          2	          1          1             1         1      AD_Leo             2.98e6	        0.3		2.0 	      0.0	     0.0       6.31e33       0.0
+M3_5	          2	          1          1             1         1      EV_Lac             2.98e6	        0.3		2.0 	      0.0	     0.0       6.17e32       0.0
 M4	          2	          1          1             1         1      YZ_CMi             5.95e6	        0.3		2.0 	      0.0	     0.0       1.86e33       0.0
-kilonova          3	          0          0             0         0      kilonova_LCs.npy   4.0e-25	        0.3          	10.0          0.0            0.0       0.0           0.0

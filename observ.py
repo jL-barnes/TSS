@@ -115,7 +115,6 @@ class grid:
         self.Xgal_trans  = Xgal_trans	#Whether there are Xgal transients
         if self.Xgal_trans:
             self.Cosmo = cm.Cosmology(Dmax_xgal)
-        #   self.Cosmo = cm.NoCosmology
         self.cellGrid    = self.makeCellGrid( hRA, hDec, self.h_DMW, self.h_xgal )
         self.choose_dust_grid()
 
@@ -247,22 +246,6 @@ class observation:
         # set up the transients list
         self.setTransientsList()
         # determine max distance (extra-galactic)
-        """   #old part with single mag_lim
-        self.mag_lim = mag_lim
-        brightest = 100.0
-        f = open( pm.transientFile, 'r' )
-        while f.readline() != '\n':
-            pass
-        for line in f:
-            fields = line.split()
-            if fields[0] in self.transientsList:
-                print fields[0]
-                if int(fields[1]) == 3:
-                    pkmag, devmag = float(fields[6]), float(fields[7])
-                    brightest = min(brightest, pkmag - 3.0*devmag)
-        f.close()
-        exp_term = 0.2*( self.mag_lim - brightest ) + 1.0
-        """
         self.setUpColors( pm.color_system, pm.showbands )
         self.mag_lim = [ mag_lim[ band ] for band in self.bands]
         brightest = 100.0 * np.ones( len( self.bands ) )
@@ -270,29 +253,20 @@ class observation:
         f = open( pm.PeakMagFile, 'r' )
         while f.readline() != '\n':
             pass
-        for line in f:
-            fields = line.split()
-            if fields[0] in self.transientsList:
-                pkmag = {'U':fields[1], 'B':fields[2], 'V':fields[3], 'R':fields[4], 'I':fields[5], 'J':fields[6], 'H':fields[7], 'K':fields[8], 'u':fields[9], 'g':fields[10], 'r':fields[11], 'i':fields[12], 'z':fields[13]}
-                pkmag = np.array([ pkmag[ band ] for band in self.bands]).astype(float)
-                devmag = float(fields[14])
-                brightest = np.minimum(brightest, pkmag - 3.0*devmag)
-                trData = getFileLine( pm.transientFile, fields[0] )
-                Galtype = int( trData[0] )
-                if Galtype in [0,1,2]:
-                    Gal_trans = True	#There are galactic transients
-                if Galtype == 3:
-                    Xgal_trans = True	#There are extragalactic transients
-                """
-                if self.colorScheme == 'UBVRI':
-                    pkmag = np.array(fields[1:9]).astype(float)
+        if not self.transientsList == []:
+            for line in f:
+                fields = line.split()
+                if fields[0] in self.transientsList:
+                    pkmag = {'U':fields[1], 'B':fields[2], 'V':fields[3], 'R':fields[4], 'I':fields[5], 'J':fields[6], 'H':fields[7], 'K':fields[8], 'u':fields[9], 'g':fields[10], 'r':fields[11], 'i':fields[12], 'z':fields[13]}
+                    pkmag = np.array([ pkmag[ band ] for band in self.bands]).astype(float)
                     devmag = float(fields[14])
                     brightest = np.minimum(brightest, pkmag - 3.0*devmag)
-                elif self.colorScheme == 'ugriz':
-                    pkmag = np.array(fields[9:14]).astype(float)
-                    devmag = float(fields[14])
-                    brightest = np.minimum(brightest, pkmag - 3.0*devmag)
-                """
+                    trData = getFileLine( pm.transientFile, fields[0] )
+                    Galtype = int( trData[0] )
+                    if Galtype in [0,1,2]:
+                        Gal_trans = True	#There are galactic transients
+                    if Galtype == 3:
+                        Xgal_trans = True	#There are extragalactic transients
         f.close()
         exp_term = 0.2*( max(self.mag_lim - brightest) ) + 1.0
         Dmax_xgal = np.power( 10.0, exp_term ) # parsecs
@@ -319,10 +293,13 @@ class observation:
         if pm.use_CVdwarf:  self.transientsList.append( 'CVdwarf' )
         if pm.use_AMCVn:    self.transientsList.append( 'AMCVn' )
         if pm.use_SNIa:     self.transientsList.append( 'SNIa' )
+        if pm.use_SNIb:     self.transientsList.append( 'SNIb' )
+        if pm.use_SNIc:     self.transientsList.append( 'SNIc' )
+        if pm.use_SNIIL:    self.transientsList.append( 'SNIIL' )
+        if pm.use_SNIIP:    self.transientsList.append( 'SNIIP' )
         if pm.use_M3:       self.transientsList.append( 'M3' )
         if pm.use_M3_5:     self.transientsList.append( 'M3_5' )
         if pm.use_M4:       self.transientsList.append( 'M4' )
-        if pm.use_kilonova: self.transientsList.append( 'kilonova' )
     def take_data( self, transientDataSet, outFile ):
         self.obTimes = self.TimeParams.get_Dates()
         tEnd = self.obTimes[-1]/8.64e4
@@ -360,7 +337,6 @@ class observation:
         # adjust radec, mag array to exclude "null"-transients
         radec_coords = radec_coords[0:imax,:]
         mags  = mags[0:imax] 
-        #below_threshold = np.array(self.mag_lim) + 0.5 * pm.mag_resolution
         below_threshold = np.max(self.mag_lim) + 0.5 * pm.mag_resolution
         for i in range( self.nBands ):
             mags[:,:,i][ mags[:,:,i] > self.mag_lim[i] ] = below_threshold

@@ -1,73 +1,85 @@
+import time
+import sys
 import numpy as np
-#import params as pm
 import params as pm
 import observ as ob
 import transient as trns
+from colorcolor import ColorColorSky
 from Animation import AnimateSky
-#import MilkyWay as MW
 
 
-import time
-tic = time.time()
 
-###################################
-# Set up the observation:
-###################################
+def main():
+    tic = time.time()
+    ###################################
+    # Set up the observation:
+    ###################################
+    observingRun = ob.observation( pm.RA_lo, pm.RA_hi, pm.DEC_lo, pm.DEC_hi,\
+                                    pm.nCells_D, pm.nCells_xgal, pm.mag_limit,\
+                                    pm.start_obs, pm.dur_obs, pm.nObs_per_day )
 
-#trns.SetUpTransientData()
+    ###################################
+    # Set up transient templates
+    ###################################
 
-###################################
-# Set up the observation:
-###################################
-#%%
-observingRun = ob.observation( pm.RA_lo, pm.RA_hi, pm.DEC_lo, pm.DEC_hi,\
-                                pm.nCells_D, pm.nCells_xgal, pm.mag_limit,\
-                                pm.start_obs, pm.dur_obs, pm.nObs_per_day )
-#%%
-#observingRun.setUpColors( pm.color_system, pm.showbands )                               
+    transientZoo = trns.TransientSet( observingRun )
+    for templ in transientZoo.transient_templates:
+        print templ.tag
 
+    ###################################
+    # Generate transients
+    ###################################
+    transientZoo.populate()
 
-###################################
-# Set up transients
-###################################
+    if pm.use_kilonova:
+        transientZoo.inject_kilonova( pm.k_tMerge, pm.k_dist, pm.k_mvRed,\
+                                       pm.k_mvBlue )
+        print "Injecting a kilonova"
+    tuc = time.time()
 
-transientZoo = trns.TransientSet( observingRun )
-for templ in transientZoo.transient_templates:
-    print templ.tag
+    ###################################
+    # Make observations
+    ###################################
+    observingRun.take_data( transientZoo, pm.outfile )
+    tec = time.time()
+    print "Time for observations", tec - tuc
 
-transientZoo.populate()
+    TotN_trans = 0
+    for temp in transientZoo.transient_templates:
+        print temp.tag, temp.N_trans, temp.N_transnonsee
+        TotN_trans += temp.N_trans
 
-print templ.tag, templ.N_trans
+    ###################################
+    # Do the animation
+    ###################################
+    toc = time.time()
+    print "Total time elapsed", toc - tic
 
-observingRun.take_data( transientZoo, pm.outfile )
+    Opts = getopts(sys.argv[1:])
+    if TotN_trans > 0 and Opts != {}:
+        if 'Animate' in Opts['-o']:
+            AnimateSky()
+        if 'ColorColor' in Opts['-o']:
+            ColorColorSky()
+        else:
+            print "Neither 'Animate' or 'ColorColor' was given as an option. Saving the results in ", pm.outfile
+    else:
+        print "No transients were found, exiting simulation..."
 
-TotN_trans = 0
-for temp in transientZoo.transient_templates:
-    print temp.tag, temp.N_trans, temp.N_transnonsee
-    TotN_trans += temp.N_trans
-print "To do:\n\tPhillips relation\n\tDust Extinction\n\tGive each Mdwarf a good quiescent luminosity in ergs"
+def getopts(argv):
+    opts = {}
+    while argv:
+        if argv[0][0] == '-':
+            if argv[0] in opts:
+                opts[argv[0]].append(argv[1])
+            else:
+                opts[argv[0]] = [argv[1]]
+        argv = argv[1:] 
+    return opts
 
-
-toc = time.time()
-print toc - tic
-if TotN_trans > 0:
-    AnimateSky()
-else:
-    print "No transients were found, exiting simulation..."
-
-#Construct_Animation()
-#Construct_ColorColor()
-
-#Show_Animation()
-#Show_ColorColor()
-
-####################################
-# Get the light curves
-####################################
-
-#takeData( transientZoo )
-
-####################################
-# Plot the light curves
-####################################
+if __name__ == "__main__": 
+    """
+    Run as: python main.py [-o Animate] [-o ColorColor]
+    """
+    main()
 

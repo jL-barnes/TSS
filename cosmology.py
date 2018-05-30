@@ -1,9 +1,12 @@
 from scipy.integrate import quad
 from scipy import interpolate
+from scipy.interpolate import RectBivariateSpline
+import h5py
 import numpy as np
 import localcosmolopy as lcm
 
 Mpc = 3.0857e22		#meter
+H0 = 67.3
 
 class Cosmology:
     """
@@ -16,13 +19,7 @@ class Cosmology:
     """
     def __init__(self, MaxDist):
         self.s2yr = 1/(60*60.*24*365.25)
-        """
-        self.H0 = 67.8 * 1e3 / Mpc	#Planck2015
-        self.Omega_M = 0.308
-        self.Omega_L = 0.692
-        self.Omega_K = 0
-        """
-        self.H0 = 67.3 * 1e3 / Mpc	#Planck2015
+        self.H0 = H0 * 1e3 / Mpc	#Planck2015
         self.Omega_M = 0.315
         self.Omega_L = 0.685
         self.Omega_K = 0
@@ -43,6 +40,9 @@ class Cosmology:
         DL: Luminosity distance in Mpc
         returns: redshift
         """
+        #print self.MaxDist
+        #if self.fn(DL) > 0.1:
+        #    print DL, self.fn(DL)
         return self.fn(DL)
 
 
@@ -71,6 +71,7 @@ class Cosmology:
     def SFH (self, T):
         """
         Returns the Star Forming History at universe age T
+        returns in units of M_odot yr^-1 Mpc-3 
         """
         return (0.01 * ( ( 1 + self.redshift_from_age(T) ) **2.6) / 
                (1 + ( (1 + self.redshift_from_age(T)) / 3.2 ) **6.2) )
@@ -112,13 +113,14 @@ class Cosmology:
         Because we want to create an interpolation at the end, we
          need to take the range of universe ages a bit more
          spaciously, hence the /1.1
-        Integral is the total (comoving) volumetric transient rate
-         It is in integration over the SFH * DTD
+        Vol_rate is the total (comoving) volumetric transient rate
+         It is in integration over the SFH * DTD (in number yr^-1 Mpc^-3)
         """
         self.NM = NM			#Nr. Transients per M_\odot
         self.alpha = alpha		#exp. index of DTD
         self.tmax = self.age_from_redshift (0) #Current age of universe
         zmin = self.get_redshift(self.MaxDist / 1.e3)
+        print "Calculating cosmology up to z = ", zmin
         tmin = lcm.age(zmin, omega_M_0 = self.Omega_M, 
                              omega_lambda_0 = self.Omega_L, 
                              omega_k_0 = self.Omega_K, 
@@ -128,13 +130,16 @@ class Cosmology:
         Z[-1] = 0.0	#Due to rounding errors Python may calculate 
                         #the last Z as ~ -1e-16, which creates a problem
 
-        self.Normalize_PSI()
+        if self.alpha == 0.0:	#No DTD
+            Vol_rate = self.NM * self.SFH(t)
+        else:
+            self.Normalize_PSI()
+            Integral = np.zeros(len(t))
+            for i in range(len(t) - 1):
+                Integral[i] = quad(self.integrand, 0.04e9, t[i], args=(t[i]))[0]
+            Vol_rate = Integral
 
-        Integral = np.zeros(len(t))
-        for i in range(len(t) - 1):
-            Integral[i] = quad(self.integrand, 0.04e9, t[i], args=(t[i]))[0]
-
-        return interpolate.interp1d(Z, Integral)
+        return interpolate.interp1d(Z, Vol_rate)
 
 
     def Nr_density_xtr(self, z):
@@ -142,6 +147,36 @@ class Cosmology:
         Returns the comoving number density of an extragalactic transient
          for redshift z
         """ 
-        #print self.Nfn(z)
         return self.Nfn(z) * 1e-9	#Convert to kpc^-3
+
+def Setup_Kcor(Kcormodel, colorsystem):
+    """
+    The setup of the K-corrections function. This includes time dilation
+    We take the file with the K-corrections (plus time dilation) and
+     make an interpolation for every color band.
+    The K-correction files have to be constructed with the jupyter notebook
+     called Auxiliary/Kcor.ipynb. 
+    Kcormodel: the name of the transient model as used in SNCosmo
+    colorsystem: The color system in use: UBVRI or ugriz
+    """
+    Kcorfile = h5py.File('LightCurveFiles/Kcorrections/%s_%s.hdf5' % (Kcormodel, colorsystem),'r')
+    Kcorfuns = {}
+    bands = list(colorsystem)
+    redshifts = Kcorfile['Z']
+    times = Kcorfile['times']
+    for band in bands:
+        K_band = Kcorfile[band][:]
+        Kcorfuns[band] = RectBivariateSpline(times, redshifts, K_band) 
+    return Kcorfuns
+
+def Sample_Kcor(Kcorfuns, band, time, redshift):
+    """
+    Sample the K-correction interpolation functions that were constructed
+     in the function above.
+    Kcorfuns: the K-corrections function as defined in Setup_Kcor
+    band: Color band in which to interpolate
+    time: The time in days after explosion that has to be sampled
+    redshift: redshift of the transient
+    """
+    return Kcorfuns[band](time, redshift)
 

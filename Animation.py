@@ -16,7 +16,7 @@ rcParams.update({'figure.autolayout':True})
 
 mag_lim = pm.mag_limit
 band_colors = {'U':'Violet', 'B':'Blue', 'V':'Green', 'R':'Red', 'I':'Orange', 'J':'Pink',\
-               'H':'Brown', 'K':'Gray'}
+               'H':'Brown', 'K':'Gray', 'u': 'Violet', 'g':'Green', 'r': 'Red', 'i':'Orange', 'z': 'Brown'}
 
 markerList = ['o','s','p','*','^', 'v', 'D','x', '<', '>', 8, '+','|']
 
@@ -24,22 +24,34 @@ markerList = ['o','s','p','*','^', 'v', 'D','x', '<', '>', 8, '+','|']
 myCC = ColorConverter()
 
 class AnData:
-    def __init__(self, datafile, bandList):
+    def __init__(self, datafile, bandList, fromfile):
         global markerList
         f = open(datafile, 'r')
         typesList = f.readline().split()
         hdr = f.readline().split()
         f.close()
         data = np.genfromtxt( datafile, skip_header =2 )
-        self.mag_norm = np.min( data[:,5:])
+        if np.array(data).shape == (6,):
+            raise Exception("Too little data to make an animation!")
+        else:
+            self.mag_norm = np.min( data[:,5:])
         # set the window for the observation
         tm, ras, decs = np.unique(data[:,2]), data[:,3], data[:,4]
-        self.ra_min = np.floor( 2*np.min(ras))/2.0
-        self.ra_max = np.ceil( 2*np.max(ras))/2.0
-        self.dec_min = np.floor( 2*np.min(decs))/2.0
-        self.dec_max = np.ceil( 2*np.max(decs))/2.0
+        if not fromfile:
+            self.ra_min   = astCoords.hms2decimal(pm.RA_lo,":")
+            self.ra_max   = astCoords.hms2decimal(pm.RA_hi,":")
+            self.dec_min  = astCoords.dms2decimal(pm.DEC_lo,":")
+            self.dec_max     = astCoords.dms2decimal(pm.DEC_hi,":")
+            if self.ra_max < self.ra_min: 
+                self.ra_min, self.ra_max = self.ra_max, self.ra_min
+            if self.dec_max < self.dec_min: 
+                self.dec_min, self.dec_max = self.dec_max, self.dec_min
+        else:	#pm.RA_lo may not refer to the correct coordinates if read from file
+            self.ra_min = np.min(ras)
+            self.ra_max = np.max(ras)
+            self.dec_min = np.min(decs)
+            self.dec_max = np.max(decs)          
         self.nBands = len(bandList)
-        #col_ids = [0,1,3,4] + [ hdr.index( bnd ) for bnd in bandList ]
         col_idstypes = np.array([0,1,3,4])
         col_idsbands = np.linspace( 5 , 5 + self.nBands - 1 , self.nBands ).astype(int) 
         col_ids = np.append(col_idstypes, col_idsbands)
@@ -67,7 +79,7 @@ class AnData:
                 mags_now = tF_now[tF_now[:,0]==iD][0,4:]
                 if iD in tF_nxt[:,0]:
                     mags_nxt = tF_nxt[tF_nxt[:,0]==iD][0,4:]
-                else: mags_nxt = mags_now#(mag_lim+0.1) * np.ones( nBands )
+                else: mags_nxt = mags_now
                 dMdt = np.abs( mags_now - mags_nxt )
                 dMdt /= dt
                 dmdtDat[j] = dMdt
@@ -75,7 +87,7 @@ class AnData:
         np.save('timeframes.npy', np.array(self.timeFrames))
         self.dmdt_max = max( np.max( tF[:,-nBands:] ) for tF in self.timeFrames )
 class Animated:
-    def __init__(self, dataFile, bandlist):
+    def __init__(self, dataFile, bandlist, fromfile):
         if len(bandlist) <= 3:
             n_row, n_col = 1, len(bandlist)
         else:
@@ -86,8 +98,11 @@ class Animated:
         self.fig, self.axs = plt.subplots( n_row, n_col, figsize = (fig_x, fig_y), sharey=True )
         self.bot = 1.0/fig_y
         self.fig.subplots_adjust( bottom = self.bot )
-        self.axs = self.axs.flatten()
-        self.data = AnData(dataFile, bandlist)
+        if len(bandlist) > 1:
+            self.axs = self.axs.flatten()
+        else:
+            self.axs = [self.axs]
+        self.data = AnData(dataFile, bandlist, fromfile)
         for i, bnd in enumerate(bandlist):
             self.axs[i].set_xlim(self.data.ra_min, self.data.ra_max)
             self.axs[i].set_ylim(self.data.dec_min, self.data.dec_max)
@@ -138,7 +153,6 @@ class Animated:
             this_type, this_ra, this_dec, this_mag, this_dmdt = dat[dat[:,i+4] <= mag_lim[band]].T[[1,2,3,i+4,i+4+self.nBands]]
             this_pos = np.column_stack( (this_ra, this_dec) )
             this_type = np.array( this_type, dtype=int )
-            #sizes = self.size_min + (this_mag-mag_lim)*self.size_grad
             sizes = self.size_min + (this_mag-mag_lim[band])*self.size_grad[band]
             rgba_cols = np.zeros( [len(this_ra), 4] )
             rgba_cols[:,0:3] = myCC.to_rgb(band_colors[self.bands[i]])
@@ -150,7 +164,6 @@ class Animated:
                 self.scatters[i*krng+k].set_facecolor( rgba_cols[ids])
                 self.scatters[i*krng+k].set_edgecolor('none')
                 self.scatters[i*krng+k].set_sizes( sizes[ids] )
-            #self.scatters[i].set_array( rgba_cols )
         self.time_text.set_text( 't = %.2f days' % (t/8.64e4))
         return self.scatters,self.timetext     
     def show(self):
@@ -160,10 +173,13 @@ def AnimateSky():
     skyfile = pm.outfile
     bList = [b for b in pm.showbands]
     print "beginning animation"
-    an = Animated( skyfile, bList )
+    an = Animated( skyfile, bList, fromfile=False )
+    Writer = animation.writers['ffmpeg']
+    writer = Writer(fps=5, metadata=dict(artist='me'), bitrate=1800)
+    an.anim.save(pm.Animation_loc, writer = writer) 
     an.show()
 
 def AnimateFile( skyfile, bList ):
-    an = Animated( skyfile, bList )
+    an = Animated( skyfile, bList, fromfile = True )
     an.show()
 

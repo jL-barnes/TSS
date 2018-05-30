@@ -1,19 +1,22 @@
 import numpy as np
-from scipy.interpolate import interp1d
 import h5py
 import coordTransforms as cT
 import params as pm
 import MilkyWay as MW
+import cosmology as cm
+import time
+import glob
+from scipy.interpolate import interp1d
 
 
 year_to_seconds = 8.64e4 * 365.25
+day_to_seconds = 8.64e4
+pc_to_cm = 3.08567758e18
 emptyval = 1000.0
 
-f0_UBVRI = {'U':417.5e-11, 'B':632.0e-11, 'V':363.1e-11, 'R':217.7e-11, 'I':112.6e-11, 'J':31.47e-11, 'H':11.38e-11, 'K':3.961e-11} 
-f0_ugriz = {'u':859.5e-11, 'g':466.9e-11, 'r':278.0e-11, 'i':185.2e-11, 'z':131.5e-11}
+flux_0 = {'U':417.5e-11, 'B':632.0e-11, 'V':363.1e-11, 'R':217.7e-11, 'I':112.6e-11, 'J':31.47e-11, 'H':11.38e-11, 'K':3.961e-11, 'u':859.5e-11, 'g':466.9e-11, 'r':278.0e-11, 'i':185.2e-11, 'z':131.5e-11}
 #http://www.astronomy.ohio-state.edu/~martini/usefuldata.html
 
-pc_to_cm = 3.08567758e18
 
 class TransientSet:
     def __init__ (self, obRun):
@@ -40,7 +43,6 @@ class TransientSet:
         galTrans = [ tr for tr in self.transient_templates if tr.galType != 3 ]
         cells_galactic = self.grid.cellGrid[0:galIdx]
         i = 0
-        import time
         tic = time.time()
         for gtr in galTrans:
             D_gal_max = gtr.Max_obs_D * 1.e-3 #kpc
@@ -55,6 +57,8 @@ class TransientSet:
             self.grid.Cosmo.create_Nr_density_funct(xtr.NM, xtr.alpha) 
             for c in cells_xgal:
                 xtr.get_blueprints( c, self.deltaT_obs, self.mag_lim )
+    def inject_kilonova( self, tMerge, dist, mvRed, mvBlue ):
+        self.transient_templates.append( kilonovaTemplate( tMerge, dist, mvRed, mvBlue ))
             
 def makeTemplate( tag, mag_lim ):
     transientsData = getFileLine( pm.transientFile, tag )
@@ -76,10 +80,6 @@ class transientTemplate:
         self.tag         = tag
         self.galType     = int( transientsData[0] )
         self.galkey      = [int(tD) for tD in transientsData[1:5]]
-        """
-        self.peak_mag    = float( transientsData[5] )
-        self.std_mag     = float( transientsData[6] )
-        """
         self.bands       = list( pm.showbands )
         self.peak_mag    = np.array([ PeakMagData[ band ] for band in self.bands]).astype(float)
         self.std_mag     = float( PeakMagData['std'] )
@@ -119,53 +119,35 @@ class transientTemplate:
             bnds.append(this_bb)
             bandlabels.append(bandLabel)
         return bnds, bandlabels
-#        if self.colors == 'UBVRI':
-#            uband = self.broadbands['U']( tsample )
-#            bband = self.broadbands['B']( tsample )
-#            vband = self.broadbands['V']( tsample )
-#            rband = self.broadbands['R']( tsample )
-#            iband = self.broadbands['I']( tsample )
-#            jband = self.broadbands['J']( tsample )
-#            hband = self.broadbands['H']( tsample )
-#            kband = self.broadbands['K']( tsample )
-#            bnds = [uband, bband, vband, rband, iband, jband, hband, kband]
-#        elif self.colors == 'ugriz':
-#            uband = self.broadbands['u']( tsample )
-#            gband = self.broadbands['g']( tsample )
-#            rband = self.broadbands['r']( tsample )
-#            iband = self.broadbands['i']( tsample )
-#            zband = self.broadbands['z']( tsample )
-#            bnds  = [uband, gband, rband, iband, zband]
-#        return bnds
-    def get_Ntransients( self, cell ):
+    def get_Ntransients( self, cell, Nr_of_years ):
         if abs(self.scaleH - MW.MW_Hthin) < 0.001:
             N_per_y = self.stellarNrm * cell.vol * np.sum( np.array(cell.rho)[ np.where( self.galkey )] )
         else:
             this_rho = MW.get_MW_dens( [cell.raMid, cell.decMid, cell.DMid],\
                                            piecewise=True, Hthin = self.scaleH )
             N_per_y = self.stellarNrm * cell.vol * np.sum( np.array(this_rho)[ np.where( self.galkey )] )
+        N_per_y = N_per_y * Nr_of_years
         if N_per_y > 2.0:
             NTr = int( N_per_y )
         else: NTr = geometricP( N_per_y )
         return NTr   
     def get_blueprints( self, c, dtObs, mag_lim ):
-        N_transients = self.get_Ntransients( c )
+        Nr_of_years = (self.deltaT_LC + dtObs) / 365.25   #At first observation the first LC
+                                                          #should have just ended
+        N_transients = self.get_Ntransients( c, Nr_of_years )
         self.N_transnonsee += N_transients
         for i in range( N_transients ):
-            tOutburst = -365.25 * np.random.random()
+            tOutburst = -365.25 * Nr_of_years * np.random.random()
             if tOutburst + self.deltaT_LC + dtObs > 0.0:
                 magDelta = np.random.normal( scale = self.std_mag )
-                peak_M = self.peak_mag - magDelta
+                peak_M = self.peak_mag + magDelta
                 newLC = LC_blueprint( c.sampleCoords(), peak_M, magDelta, tOutburst )
                 if canSee_LC( newLC, mag_lim ):
-                    if newLC.LC_Dist > c.Grid.Dmax_MK * 1000:	#convert to pc
-                        coords = (newLC.LC_RA, newLC.LC_DEC)
-                        newLC.Extinction = c.Grid.Xtr_dust.Sample_extinction(*coords)
-                    else:
-                        coords = (newLC.LC_RA, newLC.LC_DEC, newLC.LC_Dist)
-                        newLC.Extinction = c.Grid.Gal_dust.Sample_extinction(*coords)
-                    self.transients.append(newLC)#append( newLC )
-                    self.N_trans += 1
+                    coords = (newLC.LC_RA, newLC.LC_DEC, newLC.LC_Dist)
+                    newLC.Extinction = c.Grid.Gal_dust.Sample_extinction(*coords)
+                    if canSee_LC( newLC, mag_lim ):
+                        self.transients.append(newLC)
+                        self.N_trans += 1
     def sample_all_LCs( self, obTimes, threshold ):
         radec_list, bandmags_list = [], []
         obT_f = obTimes[-1]
@@ -176,17 +158,8 @@ class transientTemplate:
             dist_mod = 5.0 * np.log10(dval*1.0e3) - 5.0
             magDev = lc.magDelta
             bandMags, bandlabels = self.get_all_bbs( tSamp )
-            #for band in bandMags:
             for i,label, in enumerate(bandlabels):
                 bandMags[i][bandMags[i] < emptyval] += dist_mod + lc.Extinction[label] + magDev
-            """
-            bbExt = min( [np.min( band ) for band in bandMags] )
-            if bbExt > threshold:
-                self.N_trans -=1
-            else:
-                radec_list.append( [ lc.LC_RA, lc.LC_DEC ] )
-                bandmags_list.append( bandMags )
-            """
             bbExt = np.array([np.min( band ) for band in bandMags])
             if np.any( bbExt < threshold ) :
                 radec_list.append( [ lc.LC_RA, lc.LC_DEC ] )
@@ -207,18 +180,21 @@ class galactic_recur_template( transientTemplate ):
         self.freqDev = float( trData[10] )
         self.Max_obs_D     =  Maximum_observing_distance(mag_lim, self.peak_mag, self.std_mag)
     def get_blueprints( self, c, dtObs, mag_lim ):
-        N_transients = self.get_Ntransients( c )
+        Nr_of_years = 1.	#Recurrent transient => Nr. of transients does not depend on 
+                                #observation time
+        N_transients = self.get_Ntransients( c, Nr_of_years )
         self.N_transnonsee += N_transients
         for i in range( N_transients ):
-            tOutburst = -365.25 * np.random.random() 
+            tOutburst = -365.25 * Nr_of_years * np.random.random() 
             magDelta = self.std_mag * 3.0
-            peak_M = self.peak_mag - magDelta
+            peak_M = self.peak_mag + magDelta
             newLC = LC_blueprint( c.sampleCoords(), peak_M, magDelta, tOutburst )
             if canSee_LC( newLC, mag_lim ):
                 coords = (newLC.LC_RA, newLC.LC_DEC, newLC.LC_Dist)
                 newLC.Extinction = c.Grid.Gal_dust.Sample_extinction(*coords)
-                self.transients.append( newLC )
-                self.N_trans += 1
+                if canSee_LC( newLC, mag_lim ):
+                    self.transients.append( newLC )
+                    self.N_trans += 1
     def sample_all_LCs( self, obTimes, threshold ):
         radec_list, bandmags_list = [], []
         obT_f = obTimes[-1]
@@ -270,14 +246,6 @@ class galactic_recur_template( transientTemplate ):
         dist_mod = 5.0 * np.log10( dval*1.0e3 ) - 5.0
         for i,label, in enumerate(bandlabels):
             bandMags[i] += dist_mod - lc.Extinction[label]
-        """
-        bbExt = min([np.min(band) for band in bandMags])
-        if bbExt > threshold:
-            self.N_trans -= 1
-            return [],[]
-        else:
-            return [lc.LC_RA, lc.LC_DEC], bandMags
-        """
         bbExt = np.array([np.min( band ) for band in bandMags])
         if np.any( bbExt < threshold ) :
             return [lc.LC_RA, lc.LC_DEC], bandMags
@@ -291,7 +259,7 @@ class Mdwarf_template( transientTemplate ):
         vals               = np.genfromtxt( pm.MDwarfFile, names=True ).T[tag]
         self.aval, self.bval, self.alf_ac, self.alf_in,\
             self.bet_ac, self.bet_in, self.da_dz = vals[0:7]
-        self.Ebins         = 50		#results in 50 bins
+        self.Ebins         = 100		#results in 100 bins
         logE_min, logE_max = vals[7:9]
         last_logE          = logE_max - (logE_max - logE_min)/self.Ebins
                              #last_logE is the the start of the last logE-bin
@@ -305,34 +273,34 @@ class Mdwarf_template( transientTemplate ):
         self.Epk           = {}
         self.Max_obs_D     =  Maximum_observing_distance(mag_lim, self.peak_mag, self.std_mag)
     def get_blueprints( self, c, dtObs, mag_lim ):
-        N_transients = self.get_Ntransients( c )
+        Nr_of_years = 1.	#Recurrent transient => Nr. of transients does not depend on 
+                                #observation time
+        N_transients = self.get_Ntransients( c, Nr_of_years )
         self.N_transnonsee += N_transients
         for i in range( N_transients ):
-            t_dummy = -365.25 * np.random.random()
+            t_dummy = -365.25 * Nr_of_years * np.random.random()
             newLC = LC_blueprint( c.sampleCoords(), self.peak_mag, 0.0, t_dummy )
             if canSee_LC( newLC, mag_lim ):
                 coords = (newLC.LC_RA, newLC.LC_DEC, newLC.LC_Dist)
                 newLC.Extinction = c.Grid.Gal_dust.Sample_extinction(*coords)
-                self.transients.append( newLC )
-                self.N_trans += 1
-                """
                 if canSee_LC( newLC, mag_lim ):	#Test WITH dust
                     self.transients.append( newLC )
                     self.N_trans += 1
                 """
+                else:
+                    d_10pc = 0.01
+                    dist_ratio = newLC.LC_Dist/d_10pc
+                    apparent_mag = newLC.PeakMag + 5.0 * np.log10( dist_ratio ) + newLC.Extinction['B']
+                    print newLC.LC_Dist, apparent_mag, newLC.Extinction
+                """
     def setUpLC( self, colorchoice ):
         print 'for %s' % self.tag
-        if colorchoice == 'UBVRI': 
-            self.flux_0 = f0_UBVRI
-        elif colorchoice == 'ugriz': 
-            self.flux_0 = f0_ugriz
-        else:
-            print 'Invalid color system.'
-            return 0
+        self.flux_0 = flux_0
         print self.LCFile + '_%s.hdf5' % colorchoice
-        lcdata = h5py.File( self.LCFile + '_%s.hdf5' % colorchoice, 'r' )
+        lcdata = h5py.File( self.LCFile + '_%s_rise.hdf5' % colorchoice, 'r' )
         tms = lcdata['times'][:]
         self.broadbands['t'] = tms;
+        print tms, "tms"
         for band in self.bands:
             print "%s band" % band
             if not band in lcdata.keys():
@@ -373,15 +341,15 @@ class Mdwarf_template( transientTemplate ):
                 eBins_m = self.dlogE_act + 0.5 * (eBins_l[1] - eBins_l[0])
             #Determine Flare Frequency
             cum_ne = tWindow * np.power(10.0, alf) * np.power(10.0, bet*eBins_l)
+            #print alf, bet, "cum_ne", cum_ne, "eBins_l", eBins_l
             #cum_ne is cumulative. We need to decumulate it:
             ne = [cum_ne[i] - cum_ne[i+1] for i in range(self.Ebins +1)]
-            #ne.append(cum_ne[-1])	#Append last frequency
             ne = np.array(ne)
-            #print "ne", ne, hZ, active, alf, bet, np.sum(ne), np.sum(ne2)
             z = np.random.random(self.Ebins + 1)  #Round probabilities off to integers
             cond = z < ne - ne.astype(int)
             ne[cond] +=1
             nFlares = ne.astype(int)
+            #print nFlares
             
             if max( nFlares ) < 1: 
                 self.N_trans -=1
@@ -412,7 +380,10 @@ class Mdwarf_template( transientTemplate ):
         lum_matrix = np.zeros( [ nBands, len(obT) ] )
         eF, nF = eBins[nFlares>0], nFlares[nFlares>0]
         for i, n in enumerate(nF):
-            thisE = np.power(10.0, eF[i])
+            logEU = eF[i]
+            trise  = np.power(10.0, np.random.normal(0.31*logEU - 7.6, 0.32))
+            tdecay = np.power(10.0, np.random.normal(0.51*logEU - 13., 0.22))
+            thisE = np.power(10.0, logEU)
             dts = np.random.random( n ) * window
             #generate outbursts that started after t0
             for dt in dts:
@@ -440,9 +411,6 @@ class Mdwarf_template( transientTemplate ):
         lumlist = [row for row in lum_matrix]
         return lumlist
                 
-    #def setUpLCs():
-        # get unscaled light curves 
-    #   return #-
 
 class xgal_template( transientTemplate  ):
     def __init__( self, tag, trData, PkMData ):
@@ -450,28 +418,152 @@ class xgal_template( transientTemplate  ):
         #self.stellarNrm = 4.*4.0e-14
         self.NM = float(trData[6])
         self.alpha = float(trData[12])
-    def get_Ntransients( self, cell ):
+        self.Kcormodel = trData[5]
+        #The following are only applicable to SNIa
+        self.scale = 1		
+        self.scale_0 = 1.09
+        self.M_B_max = -18.89
+    def Phillips_scale( self, magDev ):
+        Mag_zero = self.M_B_max + magDev - 5 * np.log10(cm.H0) + 25
+        scale = 1./(0.59 * Mag_zero + 3.0)	#The real scale factor
+        self.scale = self.scale_0 / scale	#Adjusted for scale factor of template LC
+    def get_all_bbs( self, tsample , redshift):
+        bnds = []
+        bandlabels = []
+        for bandLabel in self.bands:
+            Kcor = np.array(cm.Sample_Kcor(self.Kcorfuns, bandLabel, 
+                                           tsample, redshift))
+            #Kcor now needs to be "ravelled" because it's a 2D array [[x]] -> [x]
+            this_bb = self.broadbands[bandLabel]( tsample * self.scale ) + Kcor.ravel()
+            bnds.append(this_bb)
+            bandlabels.append(bandLabel)
+        return bnds, bandlabels
+    def get_Ntransients( self, cell, Nr_of_years ):
         kpc3 = cell.vol
         N_per_y = kpc3 * cell.Grid.Cosmo.Nr_density_xtr( cell.z ) 
         #N_per_y = kpc3 * self.stellarNrm	#Non-cosmological
+        N_per_y = N_per_y * Nr_of_years
         if N_per_y > 2.0:
             NTr = int( N_per_y )
         else: NTr = geometricP( N_per_y )
         return NTr
-#    def get_blueprints( self, c, dtObs, mag_lim ):
-#        N_transients = self.get_Ntransients( c )
-#        for i in range( N_transients ):
-#            tOutBurst = -365.25 * np.random.random()
-#            if tOutBurst + self.deltaT_LC + dtObs > 0.0:
-#                magDelta = np.random.normal( scale = self.std_mag )
-#                peak_M = self.peak_mag + magDelta
-#                newLC = LC_blueprint( c.sampleCoords(), peak_M, tOutBurst )
-#                if canSee_LC( newLC, mag_lim ):
-#                    self.transients.append( newLC )
+    def get_blueprints( self, c, dtObs, mag_lim ):
+        Nr_of_years = (self.deltaT_LC + dtObs) / 365.25   #At first observation the first LC
+                                                          #should have just ended
+        N_transients = self.get_Ntransients( c, Nr_of_years )
+        self.N_transnonsee += N_transients
+        for i in range( N_transients ):
+            tOutburst = -365.25 * Nr_of_years * np.random.random()
+            if tOutburst + self.deltaT_LC + dtObs > 0.0:
+                magDelta = np.random.normal( scale = self.std_mag )
+                peak_M = self.peak_mag + magDelta
+                newLC = LC_blueprint( c.sampleCoords(), peak_M, magDelta, tOutburst )
+                if canSee_LC( newLC, mag_lim ):
+                    coords = (newLC.LC_RA, newLC.LC_DEC)
+                    newLC.Extinction = c.Grid.Xtr_dust.Sample_extinction(*coords)
+                    if canSee_LC( newLC, mag_lim ):
+                        newLC.Redshift = c.Grid.Cosmo.get_redshift(newLC.LC_Dist / 1.e3)	#convert to Mpc
+                        self.transients.append(newLC)
+                        self.N_trans += 1
+    def sample_all_LCs( self, obTimes, threshold ):
+        radec_list, bandmags_list = [], []
+        obT_f = obTimes[-1]
+        dts = obT_f - obTimes
+        self.Kcorfuns = cm.Setup_Kcor(self.Kcormodel, pm.color_system)
+        import matplotlib.pyplot as plt
+        CM = cm.Cosmology(8.67e6)
+        for lc in self.transients: 
+            tSamp = -lc.tExplode * 8.64e4 - dts
+            dval = lc.LC_Dist	#is in kpc
+            dist_mod = 5.0 * np.log10(dval*1.0e3) - 5.0
+            magDev = lc.magDelta
+            if self.tag == 'SNIa':
+                self.Phillips_scale(magDev)
+            bandMags, bandlabels = self.get_all_bbs( tSamp, lc.Redshift )
+            for i,label, in enumerate(bandlabels):
+                bandMags[i][bandMags[i] < emptyval] += dist_mod + lc.Extinction[label] + magDev
+            bbExt = np.array([np.min( band ) for band in bandMags])
+            if np.any( bbExt < threshold ) :
+                radec_list.append( [ lc.LC_RA, lc.LC_DEC ] )
+                bandmags_list.append( bandMags )
+            else:
+                self.N_trans -=1
+        """
+            if np.min(bandMags) < 21.:
+                print CM.get_redshift(lc.LC_Dist/1.e3), lc.tExplode, dist_mod, magDev
+                plt.plot(np.linspace(0,80,len(bandMags[0])),bandMags[0])
+                plt.plot(np.linspace(0,80,len(bandMags[0])),bandMags[1])
+                plt.plot(np.linspace(0,80,len(bandMags[0])),bandMags[2])
+                plt.plot(np.linspace(0,80,len(bandMags[0])),bandMags[3])
+                plt.plot(np.linspace(0,80,len(bandMags[0])),bandMags[4])
+        plt.show()
+        """
+        return radec_list, bandmags_list
+
+class kilonovaTemplate( transientTemplate ):
+    def __init__(self, tMerge, dist, mvRed, mvBlue):
+        self.tag = 'kilonova'
+        self.bands = list(pm.showbands)
+        self.t_merge = tMerge
+        if dist != None:
+            self.dist = dist
+        else: self.dist = sampleLIGODistance( pm.maxLIGODist)
+        self.RA = sampleRA( pm.RA_lo, pm.RA_hi )
+        self.DEC = sampleDEC( pm.DEC_lo, pm.DEC_hi )
+        self.N_trans = 1
+        self.N_transnonsee = 1
+        self.mvRed = mvRed
+        self.mvBlue = mvBlue
+
+    def sample_all_LCs( self, obTimes, threshold ):
+        netLC = []
+        if self.mvRed != None:
+            mred, vred = get_best_match( 'red', *self.mvRed)
+            rlcf = 'knRed_m%.4f_vk%.2f_Xlan1e-1.0.h5' % (mred, vred)
+            rlcf = 'kilonovaLib/' + rlcf
+            redLC = h5py.File(rlcf, 'r' )
+            if self.mvBlue == None: 
+                netLC.append( redLC['days'][:] )
+                for band in self.bands:
+                    netLC.append( redLC[band][:] )
+                redLC.close()
+        if self.mvBlue != None:
+            mblu, vblu = get_best_match( 'blue', *self.mvBlue)
+            blcf = 'knBlu_m%.4f_vk%.2f_Xlan1e-5.0.h5' % (mblu, vblu)
+            blcf = 'kilonovaLib/' + blcf
+            bluLC = h5py.File(blcf, 'r')
+            if self.mvRed == None:
+                netLC.append( bluLC['days'][:] )
+                for band in self.bands:
+                    netLC.append( bluLC[band][:] )
+                bluLC.close()
+        if not netLC: # combine kilonova light curves
+            times = redLC['days'][:]
+            netLC.append(times)
+            for band in self.bands:
+                m1, m2 = redLC[band][:], bluLC[band][:]
+                m12 = -2.5*np.log10( np.power(10.0, -.4*m1) + np.power(10.0, -.4*m2) )
+                netLC.append( m12 )
+            redLC.close()
+            bluLC.close()
+        # now that we have the light curve, sample it at the appropriate times
+        tSample = (obTimes-self.t_merge)/8.64e4
+        dist_mod = 5.0 * np.log10( self.dist/pc_to_cm  ) - 5.0
+        for j in range(len(netLC)-1):
+            bandLC = netLC[j+1]
+            f_band = interp1d( netLC[0][ np.isinf(bandLC) == False],
+                               bandLC[np.isinf(bandLC) == False], 
+                               bounds_error=False, fill_value=np.inf )
+            netLC[j+1] = f_band( tSample ) + dist_mod
+        #The following two items should be put into an array like with all other transients
+        radec_list = [[self.RA, self.DEC]]
+        bandmags_list = [netLC[1:]]	
+        return radec_list, bandmags_list
+
 
 
 class LC_blueprint:
-    def __init__ (self, coords, magPk, magDelta, tBurst ):
+    def __init__ (self, coords, magPk, magDelta, tBurst):
         # explosion time: randomly within the year preceding 
         # the end of the observation
         self.tExplode   = tBurst
@@ -481,6 +573,7 @@ class LC_blueprint:
         self.magDelta   = magDelta
         self.PeakMag    = magPk
         self.Extinction = 0
+        self.Redshift   = 0	#preliminarily
 
 
 
@@ -514,8 +607,75 @@ def Maximum_observing_distance(mag_lim, pkmag, devmag):
     Max_D = np.power( 10.0, exp_term ) # parsecs
     return Max_D
 
+def Minimum_Flare_E(D, Lq, colorbands):
+    """
+    Calculates the minimum flare energy that one could observe of an M dwarf
+    This is an absolute lower limit. It is very likely that some brighter flares
+     can't be seen either. However, better be safe than sorry.
+    The minimum flare energy depends on the quiescence energy, the magnitude 
+     limit in the U-band, the magnitude resolution and the distance of the M dwarf.
+    This can only be calculated for the U-band. We apply this to all other
+     bands. That's okay, because M-dwarfs flare the brightest in the U-band
+
+    D: Distance to transient in kpc
+    Lq: quiescent luminosities per colorband in erg/s/Ang
+    """
+    #########################################################
+    #This is not finished. First we need to model the rise/decay time
+    #####################################################
+    D = D * 1.e3
+    Area = 4.0 * np.pi * np.power( D * pc_to_cm, 2.0 )
+    #Quiescent fluxes
+    Qflux = { band : Lq[band] / Area for band in colorbands}
+    #Quiescent magnitudes
+    Qmag = { band : flux2mag(Qflux[band], flux_0[band]) for band in colorbands}
+
+    #The difference between the magnitude limit and quiescent magnitude of the M dwarf
+    difmag = {band : Qmag[band] - pm.mag_limit[band] for band in colorbands}
+    mindifmag, mindifband = min( zip(difmag.values(), difmag.keys()) )
+    if mindifmag < 0:	#The M dwarf is visible in quiescence
+        logminE = 28
+        #####################################
+        #Here a function should come to investigate the minimum flare required for an M dwarf that is visible. I.e. work with the sensitivity of the telescope: pm.mag_resolution
+        ######################33
+    else:		#The M dwarf is not visible in quiescence
+        #Now calculate how large a flare would be in the U-band to increase 
+        # the M dwarf's brightness by mindifmag magnitudes
+        Qflux_U = Lq['U'] / Area
+        Qmag_U = flux2mag( Qflux_U, flux_0['U'] )
+        Outburstflux_U = mag2flux( Qmag_U - mindifmag, flux_0['U'])
+        L_outburst_U = Outburstflux_U * Area
+        print Qmag_U, mindifmag, mag2flux(Outburstflux_U, flux_0['U']), L_outburst_U
+        logminE = np.log10(L_outburst_U - Lq['U']) #####################################
+        ############The above function now gives an erg/s: it must be changed to erg with the rise/decay time of a flare
+        ###################
+    return logminE
+
+def mag2flux(mag,flux_0):
+    """
+    converts magnitude to flux in Jy
+    """
+    flux = flux_0 * 10**(-0.4*mag)
+    return flux
+
+def flux2mag(flux,flux_0):
+    """
+    converts flux (Jy) to magnitudes
+    """
+    mag = -2.5*np.log10(flux/flux_0)
+    return mag
+
 
 def geometricP( nt ):
+    """
+    Use Poisson statistics to obtain a number of transients inside a cell
+     if the average is 2. Because we're using Poisson statistics, there is
+     a non-zero probability that the number of transients is higher than 2.
+    nt: the average number of transients in this cell (float)
+    returns: the actual number of transients in this cell (int)
+    """
+    return np.random.poisson(nt)
+    """
     Nt = 0
     if nt > 1.0:
         p = 0.5*nt
@@ -526,6 +686,8 @@ def geometricP( nt ):
         z1 = np.random.geometric( nt, size = 1 )
         if z1 == 1: Nt = 1
     return Nt 
+    """
+
 
 
 def getFileLine( file, tag ):
@@ -541,4 +703,50 @@ def getFileLine( file, tag ):
 
 
 
+def order_mv():
+    ms, vs = [],[]
+    for f in glob.glob( 'kilonovaLib/knBlu*.h5' ) + glob.glob( 'kilonovaLib/knRed*.h5'):
+        this_m = f[f.find('_m')+2:f.find('_v')]
+        this_v = f[f.find('_v')+3:f.find('_X')]
+        if this_m not in ms: ms.append(this_m)
+        if this_v not in vs: vs.append(this_v)
+    ms = np.sort(np.array( [float(m) for m in ms] ))
+    vs = np.sort(np.array( [float(v) for v in vs] ))
+    return ms, vs
+
+def get_best_match( br, m_msun, v_c ):
+    ms, vs = order_mv()
+    m_match = ms[np.argmin( np.abs(ms-m_msun) )]
+    v_match = vs[np.argmin( np.abs(vs-v_c) )]
+    print( 'Best match for %s kilonova part: M = %.2e Msun, v = %.2f c.' % (br, m_match, v_match) )
+    return m_match, v_match
+    
+def sampleRA(ra_lo, ra_hi):
+    ra_conv = np.array([15.0, 0.25, 1.0/240.])
+    hmslow = np.array([float(val) for val in ra_lo.split(':')])
+    hmshi= np.array([float(val) for val in ra_hi.split(':')])
+    ralo = np.sum( hmslow*ra_conv )
+    rahi = np.sum( hmshi*ra_conv )
+    if ralo > rahi: ralo, rahi = rahi, ralo
+    RA_sampled = np.random.random() * (rahi - ralo ) + ralo
+    return RA_sampled
+
+def sampleDEC( dec_lo, dec_hi ):
+    dec_conv = np.array([1.0, 1.0/60.0, 1.0/3600.0])
+    dmslow = np.array([float(val) for val in dec_lo.split(':')])
+    dmshi= np.array([float(val) for val in dec_hi.split(':')])
+    declo = np.sum( dmslow*dec_conv )
+    dechi = np.sum( dmshi*dec_conv )
+    if declo > dechi: declo, dechi = dechi, declo
+    DEC_sampled = np.random.random() * (dechi - declo) + declo
+    return DEC_sampled
+
+def sampleLIGODistance(  dmax ):
+    while True:
+        x = np.random.random()*dmax
+        y = np.random.random()*dmax
+        z = np.random.random()*dmax
+        r = np.sqrt( x*x + y*y + z*z )
+        if r <= dmax: break
+    return r
 
