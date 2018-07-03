@@ -32,17 +32,18 @@ nCells_D = 1000          # number of cells in the distance direction (galactic)
 nCells_xgal = int(1e4)   # number of cells in the distance directions (extragalactic)
 
 # time of observation
+Obstimes = None		#Change to filename if you want to run from a file (like Obstimes.txt)
 
 # eventually: change this to a date so we can track the moon
 start_obs = 0.0
-dur_obs = 80             # duration of observation in days 
-nObs_per_day = 1         # number of observations per day 
+dur_obs = 5.0            # duration of observation in days 
+nObs_per_day = 1.0         # number of observations per day 
 
 # telescope capabilities
 
-mag_limit = {'U':23.0, 'B':23.0, 'V':23.0, 'R':23.0, 'I':23.0, 'J':23.0, 'H':23.0, 'K':23.0, 'u':23.0, 'g':23.0, 'r':23.0, 'i':23.0, 'z':23.0}           # limiting magnitude in each band
+mag_limit = {'U':27.0, 'B':27.0, 'V':27.0, 'R':27.0, 'I':27.0, 'J':23.0, 'H':23.0, 'K':23.0,  'u':22.14, 'g':23.47, 'r':23.16, 'i':22.40, 'z':21.23}           # limiting magnitude in each band
 mag_resolution = 0.1	   #Resolution of the telescope in magnitudes (in most sensitive band)
-color_system = 'UBVRI'#'ugriz'
+color_system = 'ugriz'#'ugriz'
 
 
 # Transients to use. Set to zero to leave out of calculation.
@@ -54,9 +55,11 @@ use_CVdwarf  = 0
 use_AMCVn    = 0
 use_SNIa     = 0
 use_SNIb     = 1
-use_SNIc     = 1
+use_SNIc     = 0
 use_SNIIL    = 0
 use_SNIIP    = 0
+use_SNIInL   = 0
+use_SNIInP   = 0
 use_M3       = 0
 use_M3_5     = 0
 use_M4       = 0
@@ -67,7 +70,7 @@ maxLIGODist = 5.25e26    #cm = 170 Mpc
 k_tMerge    = 0	         #s	Time of merger relative to observation start
 k_dist	    = 5.25e24    #cm	Can be set to None to set the distance randomly within LIGO limits
 k_mvRed	    = [0.04,0.15]#[Msun,c] Ejecta mass and velocity of red component
-k_mvBlue    = [0.025,0.3]#[Msun,c] Ejecta mass and velocity of red component
+k_mvBlue    = [0.025,0.3]#[Msun,c] Ejecta mass and velocity of blue component
 			 #To only have a red(blue) component, set k_mvRed(k_mvBlue)=None
 
 # File holding data for the transients:
@@ -85,8 +88,8 @@ MDwarfFile = 'data_MDwarfs.dat'
 Animation_loc = 'Leuven.mp4'
 
 # parameters for the data display and output
-outfile = 'test_SNIa.dat'
+outfile = 'test.dat'
 # band to show in animation. Must be consistent with choice of color system above.
-showbands = 'UBVRI'  
+showbands = 'r'  
 # should we use dust extinction in the calculations?
 use_dust = True

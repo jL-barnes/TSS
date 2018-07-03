@@ -36,6 +36,7 @@ class CCData:
         col_idstypes = np.array([1,2])
         col_idsbands = np.linspace( 5 , 5 + self.nBands - 1 , self.nBands ).astype(int) 
         col_ids = np.append(col_idstypes, col_idsbands)
+        print "hey"
         self.TRdata = [ data[data[:,0] == ID][:,col_ids] for ID in IDs ]
         self.times = tm
         dt = (tm[1] - tm[0])/8.64e4
@@ -54,16 +55,29 @@ class ColorColor:
         self.data = CCData(dataFile, bandlist, fromfile)
         self.mag_lim = pm.mag_limit
         self.bands = bandlist
+        self.Obstimes = self.data.times
+        self.Alphas = np.linspace(0.85,0.2,len(self.Obstimes))
     def plotCC(self):
-        cmap = plt.get_cmap('gist_rainbow')
+        cmap = plt.get_cmap('Accent')
         DotColor = [cmap(i//1./self.data.nTrTypes) for i in self.data.trtypes]
+        Size = 15
+        IDs_seen = []
+        SNIa = []
+        SNIb = []
+        SNIc = []
+        SNIIL = []
+        SNIIP = []
+        SNIInP = []
+        SNIInL = []
+        CVdwarf = []
         for i,ID in enumerate(self.data.TRdata):
+            #print i
             #print ID[:,2]	#[i,j]   i=Obs j=0,1,2,3,4: type, time,U,B,V 
-
             tt = int(ID[0,0])
             tt_index = 0
-            for k in self.data.trtypes:
-                if k == tt: tt_index = k 
+            for l,k in enumerate(self.data.trtypes):
+                if k == tt: tt_index = l
+            times  = np.array(ID[:,1])
             BandM0 = np.array(ID[:,2])
             BandM1 = np.array(ID[:,3])
             BandM2 = np.array(ID[:,4])
@@ -71,9 +85,39 @@ class ColorColor:
             See1 = BandM1 < self.mag_lim[self.bands[1]]
             See2 = BandM2 < self.mag_lim[self.bands[2]]
             See = See0 * See1 * See2	#What can be seen in all colors?
-            plt.scatter(BandM1[See] - BandM2[See], BandM0[See] - BandM1[See], color = DotColor[tt_index])
-                      
+            if [0.] in times: IDs_seen.append(i)
+            elif [259200.0] in times:
+                if self.data.trNames[tt_index] == 'SNIa': SNIa.append(i)
+                if self.data.trNames[tt_index] == 'SNIb': SNIb.append(i)
+                if self.data.trNames[tt_index] == 'SNIc': SNIc.append(i)
+                if self.data.trNames[tt_index] == 'SNIIL': SNIIL.append(i)
+                if self.data.trNames[tt_index] == 'SNIIP': SNIIP.append(i)
+                if self.data.trNames[tt_index] == 'SNIInL': SNIInL.append(i)
+                if self.data.trNames[tt_index] == 'SNIInP': SNIInP.append(i)
+                if self.data.trNames[tt_index] == 'CVdwarf': CVdwarf.append(i)
+            if np.any(See):		#The transient can be seen in all colors
+                rgbacolors = np.zeros((len(times[See]),4))
+                rgbacolors[:,:3] = DotColor[tt_index][:3]
+                alphas = np.zeros(len(self.Obstimes), dtype = bool)
+                for i in range(len(alphas)):
+                    if self.Obstimes[i] in times[See]: alphas[i] = True
+                rgbacolors[:,3] = self.Alphas[alphas]
+                if self.data.trNames[tt_index] == 'kilonova': Size = 125
+                else: Size = 10
+                if self.data.trNames[tt_index] == 'SNIa': 
+                    Zor = 0
+                else: Zor = tt_index + 1
+                plt.scatter(BandM1[See] - BandM2[See], BandM0[See] - BandM1[See], color = rgbacolors, edgecolors = (1,1,1,0), s = Size, zorder = Zor)  
         legendhandles = []
+        print "Nr of SNIa discovered: ", len(SNIa)
+        print "Nr of SNIb discovered: ", len(SNIb)
+        print "Nr of SNIc discovered: ", len(SNIc)
+        print "Nr of SNIIL discovered: ", len(SNIIL)
+        print "Nr of SNIIP discovered: ", len(SNIIP)
+        print "Nr of SNIInL discovered: ", len(SNIInL)
+        print "Nr of SNIInP discovered: ", len(SNIInP)
+        print "Nr of CVdwarf discovered: ", len(CVdwarf)
+        print "Nr of transients that were already visible: ", len(IDs_seen)
         for i, Transient in enumerate(self.data.trNames):
             legendhandles.append( mpatches.Patch(color=DotColor[i], label=Transient))
         plt.xlabel('%s - %s' %(self.bands[1], self.bands[2]))

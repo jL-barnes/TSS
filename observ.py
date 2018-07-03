@@ -242,7 +242,7 @@ class timeFrame:
 
 class observation:
     def __init__( self, RA_lo, RA_hi, DEC_lo, DEC_hi, N_dist_MW, N_dist_xgal, mag_lim,\
-                     t_start, durObs, nPerDay ):
+                     t_start, durObs, nPerDay, Opts ):
         # set up the transients list
         self.setTransientsList()
         # determine max distance (extra-galactic)
@@ -297,6 +297,8 @@ class observation:
         if pm.use_SNIc:     self.transientsList.append( 'SNIc' )
         if pm.use_SNIIL:    self.transientsList.append( 'SNIIL' )
         if pm.use_SNIIP:    self.transientsList.append( 'SNIIP' )
+        if pm.use_SNIInL:   self.transientsList.append( 'SNIInL' )
+        if pm.use_SNIInP:   self.transientsList.append( 'SNIInP' )
         if pm.use_M3:       self.transientsList.append( 'M3' )
         if pm.use_M3_5:     self.transientsList.append( 'M3_5' )
         if pm.use_M4:       self.transientsList.append( 'M4' )
@@ -346,7 +348,7 @@ class observation:
             if trTemp.N_trans > 0:
                 Bandsets = mags[ j : j + trTemp.N_trans]
                 j = trTemp.N_trans
-                self.writetofile(trTemp, Bandsets)
+                #self.writetofile(trTemp, Bandsets)
 
         nTr_tot = imax
         # set up output file
@@ -376,7 +378,9 @@ class observation:
         f = open( 'lc_data_test%s.dat' % trTemp.tag, 'wb' )
         clc = csv.writer( f, delimiter = '\t' )
         for k, bS in enumerate(bandSets):
+            print bS
             for j in range( len(bS[0]) ):
+                print len(self.obTimes), len(bS), k, j
                 data = [k] + [self.obTimes[j]] + [band[j] for band in bS]
                 clc.writerow(data)
         f.close()

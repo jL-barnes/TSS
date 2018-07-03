@@ -16,7 +16,7 @@ rcParams.update({'figure.autolayout':True})
 
 mag_lim = pm.mag_limit
 band_colors = {'U':'Violet', 'B':'Blue', 'V':'Green', 'R':'Red', 'I':'Orange', 'J':'Pink',\
-               'H':'Brown', 'K':'Gray', 'u': 'Violet', 'g':'Green', 'r': 'Red', 'i':'Orange', 'z': 'Brown'}
+               'H':'Brown', 'K':'Gray', 'u': 'Violet', 'g':'Green', 'r': 'Orange', 'i':'Red', 'z': 'Brown'}
 
 markerList = ['o','s','p','*','^', 'v', 'D','x', '<', '>', 8, '+','|']
 

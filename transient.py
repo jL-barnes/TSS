@@ -185,7 +185,7 @@ class galactic_recur_template( transientTemplate ):
         N_transients = self.get_Ntransients( c, Nr_of_years )
         self.N_transnonsee += N_transients
         for i in range( N_transients ):
-            tOutburst = -365.25 * Nr_of_years * np.random.random() 
+            tOutburst = -365.25 * Nr_of_years * np.random.random()
             magDelta = self.std_mag * 3.0
             peak_M = self.peak_mag + magDelta
             newLC = LC_blueprint( c.sampleCoords(), peak_M, magDelta, tOutburst )
@@ -210,7 +210,7 @@ class galactic_recur_template( transientTemplate ):
         tOuts = []
         t_OutBurst = lc.tExplode
         # step forward in time
-        while t_OutBurst < 0.0:
+        while t_OutBurst < self.deltaT_LC + (tvals[-1] / 8.64e4):
             tOuts.append( t_OutBurst )
             t_OutBurst += np.random.normal( loc = self.freqDay, scale = self.freqDev)
         # step backward in time
@@ -220,19 +220,24 @@ class galactic_recur_template( transientTemplate ):
             t_OutBurst -= np.random.normal( loc = self.freqDay, scale = self.freqDev)
         # construct the aggregate light curve
         if len( tOuts ) > 0:
+            #print "lenouts", tOuts, self.deltaT_LC, t_OutBurst
             tOuts = tOuts[::-1]	#flip the array to start with the closest outburst
             tO = tOuts[0]
+            #print tO, tvals / 8.64e4
             tSamp = -tvals - tO*8.64e4
+            #print tSamp[0] / 8.64e4, tO, tOuts
             # deviation for this occurrence of the transient
             magDev = np.random.normal( scale = self.std_mag )
             bandMags, bandlabels = self.get_all_bbs( tSamp )
             for band in bandMags:
                 band[ band < emptyval ] +=  magDev
             for tO in tOuts[1:]:
+                #print -tvals[0] / 8.64e4 - tO, tO, tO > (-tvals[0] / 8.64e4) - self.deltaT_LC
                 if tO > (-tvals[0] / 8.64e4) - self.deltaT_LC:
                     tSamp = -tvals - tO*8.64e4
                     magDev = np.random.normal( scale = self.std_mag )
                     these_bandMags, bandlabels = self.get_all_bbs( tSamp )
+                    #print "hello", np.min(these_bandMags)
                     for bi, band in enumerate( these_bandMags ):
                         band[ band < emptyval ] += magDev
                         oband = bandMags[bi]
@@ -272,6 +277,8 @@ class Mdwarf_template( transientTemplate ):
         self.Flare_energy  = float( trData[11] )
         self.Epk           = {}
         self.Max_obs_D     =  Maximum_observing_distance(mag_lim, self.peak_mag, self.std_mag)
+        self.broadbands_rise  = {}
+        self.broadbands_decay = {}
     def get_blueprints( self, c, dtObs, mag_lim ):
         Nr_of_years = 1.	#Recurrent transient => Nr. of transients does not depend on 
                                 #observation time
@@ -296,26 +303,34 @@ class Mdwarf_template( transientTemplate ):
     def setUpLC( self, colorchoice ):
         print 'for %s' % self.tag
         self.flux_0 = flux_0
-        print self.LCFile + '_%s.hdf5' % colorchoice
-        lcdata = h5py.File( self.LCFile + '_%s_rise.hdf5' % colorchoice, 'r' )
-        tms = lcdata['times'][:]
-        self.broadbands['t'] = tms;
-        print tms, "tms"
-        for band in self.bands:
-            print "%s band" % band
-            if not band in lcdata.keys():
-                print "no data for %s band" % band
-                bb = np.zeros( len(tms) )
-            else:
-                bb = lcdata[band][:]
-            ff = interp1d( tms, bb, bounds_error = False, fill_value = 0.0 )
-            def fun( times, fcn = ff ):
-                return fcn(times)
-            self.broadbands[band] = fun
-            self.Epk[band] = np.max(bb)
+        Peak1, Peak2 = (0,0)
+        self.LC_time = {}
+        for TYPE in ['rise', 'decay']:
+            lcdata = h5py.File( self.LCFile + '_%s_%s.hdf5' % (colorchoice, TYPE), 'r' )
+            tms = lcdata['times'][:]
+            if TYPE == 'rise':self.broadbands_rise['t'] = tms;
+            else: self.broadbands_decay['t'] = tms
+            for band in self.bands:
+                print "%s band" % band
+                if not band in lcdata.keys():
+                    print "no data for %s band" % band
+                    bb = np.zeros( len(tms) )
+                else:
+                    bb = lcdata[band][:]
+                ff = interp1d( tms, bb, bounds_error = False, fill_value = 0.0 )
+                def fun( times, fcn = ff ):
+                    return fcn(times)
+                if TYPE == 'rise':
+                    self.broadbands_rise[band] = fun
+                    Peak1 = np.max(bb)
+                    self.LC_time['rise'] = tms[-1]
+                elif TYPE == 'decay':
+                    self.broadbands_decay[band] = fun
+                    Peak2 = np.max(bb)
+                    self.LC_time['decay'] = tms[-1]
+                self.Epk[band] = max(Peak1, Peak2)
         lcdata.close()
     def sample_all_LCs( self, obTimes, threshold ):
-        print "nr. of Ms", self.N_trans
         # total time for observation in hours
         tWindow = ( obTimes[-1] - obTimes[0] )/3600.0 
         # lists to hold the output
@@ -365,9 +380,12 @@ class Mdwarf_template( transientTemplate ):
                     lumlist[j] += mdwarf.Extinction[ self.bands[j] ]
                 LCminima = np.array( [ np.min(lumin) for lumin in lumlist ])
                 if np.any( LCminima < threshold ) and np.any( LCminima < lum_non_outb - pm.mag_resolution ):
-                    #import matplotlib.pyplot as plt	#plot a single Mdwarf lightcurve
-                    #plt.plot(np.linspace(0,10, len(lumlist[0])), -1.*lumlist[0])
-                    #plt.show()
+                    """
+                    import matplotlib.pyplot as plt	#plot a single Mdwarf lightcurve
+                    plt.plot(obTimes, lumlist[0])
+                    plt.gca().invert_yaxis()
+                    plt.show()
+                    """
                     radec.append([ mdwarf.LC_RA, mdwarf.LC_DEC ])
                     bandmags_list.append( lumlist )
                 else:
@@ -390,8 +408,14 @@ class Mdwarf_template( transientTemplate ):
                 tSamp = obT-dt
                 for j, bnd in enumerate(self.bands):
                     if self.Epk[bnd] != 0:
-                        new_flux = ( thisE / self.Flare_energy ) * self.broadbands[bnd]( tSamp )
-                        lum_matrix[j] += new_flux
+                        tSamp_rise  = tSamp * self.LC_time['rise'] / trise
+                        tSamp_decay = (tSamp - trise) *\
+                                       self.LC_time['decay'] / tdecay
+                        new_flux_rise  = ( thisE / self.Flare_energy ) *\
+                                          self.broadbands_rise[bnd]( tSamp_rise )
+                        new_flux_decay = ( thisE / self.Flare_energy ) *\
+                                          self.broadbands_decay[bnd]( tSamp_decay )
+                        lum_matrix[j] += new_flux_rise + new_flux_decay
             #generate outbursts that started before t0
             a = 1
             for i,x in enumerate(obT):	#How many observations can a burst comprise
@@ -404,8 +428,14 @@ class Mdwarf_template( transientTemplate ):
                 tSamp = obT[:a]+dt
                 for j, bnd in enumerate(self.bands):
                     if self.Epk[bnd] != 0:
-                        new_flux = ( thisE / self.Flare_energy ) * self.broadbands[bnd]( tSamp )
-                        lum_matrix[j] += new_flux
+                        tSamp_rise  = tSamp * self.LC_time['rise'] / trise
+                        tSamp_decay = (tSamp - trise) *\
+                                       self.LC_time['decay'] / tdecay
+                        new_flux_rise  = ( thisE / self.Flare_energy ) *\
+                                          self.broadbands_rise[bnd]( tSamp_rise )
+                        new_flux_decay = ( thisE / self.Flare_energy ) *\
+                                          self.broadbands_decay[bnd]( tSamp_decay )
+                        lum_matrix[j] += new_flux_rise + new_flux_decay
         for i,row in enumerate(lum_matrix):
             lum_matrix[i] += self.Lq[ self.bands[i] ]
         lumlist = [row for row in lum_matrix]
@@ -415,7 +445,7 @@ class Mdwarf_template( transientTemplate ):
 class xgal_template( transientTemplate  ):
     def __init__( self, tag, trData, PkMData ):
         transientTemplate.__init__( self, tag, trData, PkMData )
-        #self.stellarNrm = 4.*4.0e-14
+        #self.stellarNrm = 2.47e-14	#for snIa
         self.NM = float(trData[6])
         self.alpha = float(trData[12])
         self.Kcormodel = trData[5]
@@ -441,6 +471,7 @@ class xgal_template( transientTemplate  ):
     def get_Ntransients( self, cell, Nr_of_years ):
         kpc3 = cell.vol
         N_per_y = kpc3 * cell.Grid.Cosmo.Nr_density_xtr( cell.z ) 
+        #print kpc3 * 2.30e-14
         #N_per_y = kpc3 * self.stellarNrm	#Non-cosmological
         N_per_y = N_per_y * Nr_of_years
         if N_per_y > 2.0:
@@ -453,7 +484,7 @@ class xgal_template( transientTemplate  ):
         N_transients = self.get_Ntransients( c, Nr_of_years )
         self.N_transnonsee += N_transients
         for i in range( N_transients ):
-            tOutburst = -365.25 * Nr_of_years * np.random.random()
+            tOutburst = -365.25 * Nr_of_years * np.random.random() 
             if tOutburst + self.deltaT_LC + dtObs > 0.0:
                 magDelta = np.random.normal( scale = self.std_mag )
                 peak_M = self.peak_mag + magDelta
@@ -471,6 +502,8 @@ class xgal_template( transientTemplate  ):
         dts = obT_f - obTimes
         self.Kcorfuns = cm.Setup_Kcor(self.Kcormodel, pm.color_system)
         import matplotlib.pyplot as plt
+        Distances = []
+        PEAKMAGS = []
         CM = cm.Cosmology(8.67e6)
         for lc in self.transients: 
             tSamp = -lc.tExplode * 8.64e4 - dts
@@ -488,16 +521,22 @@ class xgal_template( transientTemplate  ):
                 bandmags_list.append( bandMags )
             else:
                 self.N_trans -=1
-        """
+            """
             if np.min(bandMags) < 21.:
                 print CM.get_redshift(lc.LC_Dist/1.e3), lc.tExplode, dist_mod, magDev
                 plt.plot(np.linspace(0,80,len(bandMags[0])),bandMags[0])
                 plt.plot(np.linspace(0,80,len(bandMags[0])),bandMags[1])
                 plt.plot(np.linspace(0,80,len(bandMags[0])),bandMags[2])
-                plt.plot(np.linspace(0,80,len(bandMags[0])),bandMags[3])
-                plt.plot(np.linspace(0,80,len(bandMags[0])),bandMags[4])
+                plt.show()
+            """
+            Distances.append(dval)
+            PEAKMAGS.append(np.min(bandMags))
+        plt.plot(Distances, PEAKMAGS, '.')
+        plt.xlabel('Distance')
+        plt.ylabel('Peakmag')
+        plt.title('maglim = 23.16')
+        plt.gca().invert_yaxis()
         plt.show()
-        """
         return radec_list, bandmags_list
 
 class kilonovaTemplate( transientTemplate ):

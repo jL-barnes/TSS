@@ -18,11 +18,11 @@
 5.968e+27	 10.0		3.562e+27
 3.771e+27	 10.0		2.142e+27
 1.651e+27	 10.0		9.430e+26
-10.0             5.235e25	8.214e+25
-10.0             3.937e26	6.331e+26
-10.0             7.543e26	1.407e+27
-10.0             2.122e27	2.831e+27
-10.0             10.0		3.624e+27
+1.908e+26        5.235e25	8.214e+25
+1.121e+27        3.937e26	6.331e+26
+2.498e+27        7.543e26	1.407e+27
+5.034e+27        2.122e27	2.831e+27
+6.457e+27        10.0		3.624e+27
 
 # rows = a_val, b_val, alpha0 (active), alpha0 (inactive), beta (active), beta (inactive),
 #        da_dz (kpc^-1), logE_min (active), logE_max (active), logE_min (inactive), logE_max( inactive),

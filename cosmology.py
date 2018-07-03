@@ -86,7 +86,7 @@ class Cosmology:
     def Normalize_PSI(self):
         """
         Normalizes PSI such that the integral is equal to N/M
-        The first white dwarfs are only formed after 40Myr
+        The first white dwarfs/stellar explosions happen after 40 Myr
         """
         times = np.logspace( np.log10(0.04e9), 
                              np.log10(self.tmax), 1000)
@@ -145,7 +145,7 @@ class Cosmology:
     def Nr_density_xtr(self, z):
         """
         Returns the comoving number density of an extragalactic transient
-         for redshift z
+         per year for redshift z
         """ 
         return self.Nfn(z) * 1e-9	#Convert to kpc^-3
 
