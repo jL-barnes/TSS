@@ -20,10 +20,10 @@ RV_JK = { key: RV_BV[key] * 1.748 for key in RV_BV.keys() }
 emptyval = 1000.0
 
 class Green_Extinction:
-    def __init__(self, Xtr_dust, RA_lo, RA_hi, DEC_lo, DEC_hi):
+    def __init__(self, Xtr_dust, bands, RA_lo, RA_hi, DEC_lo, DEC_hi):
         self.Name        = "Green et al. (2017)"
         self.Ang_Res     = 0.05667	#deg (=3.4 arcmin)
-        self.bands       = list( pm.showbands )
+        self.bands       = bands
         self.RA_lo       = RA_lo
         self.RA_hi       = RA_hi
         self.DEC_lo      = DEC_lo
@@ -111,10 +111,10 @@ class Green_Extinction:
 
 
 class Schlegel_Extinction:
-    def __init__(self, RA_lo, RA_hi, DEC_lo, DEC_hi):
+    def __init__(self, bands, RA_lo, RA_hi, DEC_lo, DEC_hi):
         self.Name        = "Schlegel (1998) with the query API from Green et al. (2015)"
         self.Ang_Res     = 0.1017	#deg (=6.1 arcmin)
-        self.bands       = list( pm.showbands ) 
+        self.bands       = bands
         self.RA_lo       = RA_lo
         self.RA_hi       = RA_hi
         self.DEC_lo      = DEC_lo
@@ -171,10 +171,10 @@ class Schlegel_Extinction:
 
 
 class Schultheis_Extinction:
-    def __init__(self, Xtr_dust, RA_lo, RA_hi, DEC_lo, DEC_hi):
+    def __init__(self, Xtr_dust, bands, RA_lo, RA_hi, DEC_lo, DEC_hi):
         self.Name        = "Schultheis et al. (2014)"
         self.Ang_Res     = 0.1	#deg (=6 arcmin)
-        self.bands       = list( pm.showbands )
+        self.bands       = bands
         self.RA_lo       = RA_lo
         self.RA_hi       = RA_hi
         self.DEC_lo      = DEC_lo
@@ -234,14 +234,14 @@ class Schultheis_Extinction:
 
 
 class No_dust:
-    def __init__(self):
+    def __init__(self, bands):
         self.Name        = "No dust"
         self.queried     = False
+        self.bands       = bands
     def Sample_extinction(self, ra, dec, d=0):
         """
         We ignore dust, so, A=0
         """
-        self.bands       = list( pm.showbands )
         A = {}
         for color in self.bands:
             A[color] = 0

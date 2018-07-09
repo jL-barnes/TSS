@@ -24,17 +24,20 @@ MW_Lthick            = 3.6
 MW_Hthick            = 0.9        
 MW_Hthin             = 0.3
 MW_Lbulge            = 0.5        # source: Nelemans et al. (2004)
-MW_rho_bulge         = 3.735e10
+MW_rho_bulge         = 1.64e10
 MW_r_break           = 18.0
 MW_alpha_in          = 2.1
 MW_alpha_out         = 3.9
 MW_endHalo           = 70.0       # end of halo
+MW_Rbulge            = 1.0        # end of bulge in R (kpc) 
+
 
 DMax_MW_kpc = 200        # cut off for transients in the Milky Way, in kpc
 
 # stellar density in the solar neighborhood
 rho_stellar_sun = 8.5e7
 rho_sun_thin = rho_stellar_sun/( 1.0 + MW_fThick + MW_fHalo )
+
 
 
 def get_MW_dens( raDec_Coord, piecewise, Hthin = 0.3 ):
@@ -49,7 +52,7 @@ def get_MW_dens( raDec_Coord, piecewise, Hthin = 0.3 ):
 def MW_dens( R, Z, piecewise, Hthin ):
     rho_thin  = MW_dens_thin( R, Z, Hthin )
     rho_thick = MW_fThick * MW_dens_thick( R, Z )
-    rho_bulge = MW_dens_bulge( R, Z )
+    rho_bulge = MW_dens_bulge( R, Z)
     rho_halo  = MW_fHalo * MW_dens_halo( R, Z )
     if piecewise == True:
         dens_tot = [rho_thin, rho_thick, rho_bulge, rho_halo] 
@@ -65,13 +68,9 @@ def MW_dens_thick( R, Z ):
     expTerm = (MW_Rsun-R)/MW_Lthick - (abs(Z) + MW_Zsun)/MW_Hthick
     return rho_sun_thin * np.exp( expTerm )
 
-def MW_dens_bulge( R, Z ):
-    expTerm = -1.0*( R*R + Z*Z )/( MW_Lbulge*MW_Lbulge )
-    return MW_rho_bulge * np.exp( expTerm )
-
 def MW_dens_halo( R, Z ):
     cond = np.sqrt(R*R + (Z/MW_qHalo)*(Z/MW_qHalo))
-    if cond < MW_r_break:
+    if cond > MW_Rbulge and cond < MW_r_break:
         t1 = MW_Rsun/np.sqrt( R*R + Z*Z/MW_qHalo/MW_qHalo )
         dens_halo = rho_sun_thin * np.power( t1, MW_alpha_in )
     elif cond > MW_r_break and cond < MW_endHalo:
@@ -83,5 +82,10 @@ def MW_dens_halo( R, Z ):
     else:
         dens_halo = 1.0e-99
     return dens_halo
+
+
+def MW_dens_bulge( R, Z ):
+    expTerm = -1.0*( R*R + Z*Z )/( MW_Lbulge*MW_Lbulge )
+    return MW_rho_bulge * np.exp( expTerm )
 
 

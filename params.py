@@ -5,7 +5,7 @@ A parameter file for the Transient Sky Simulator
 # Parameters for the observation
 
 # size of the window (in JD2000)
-RA_lo  = "14:10:00" 
+RA_lo  = "14:00:00" 
 RA_hi  = "14:30:00"
 DEC_lo = "20:00:00"
 DEC_hi = "25:00:00"
@@ -38,10 +38,11 @@ Obstimes = None		#Change to filename if you want to run from a file (like Obstim
 start_obs = 0.0
 dur_obs = 5.0            # duration of observation in days 
 nObs_per_day = 1.0         # number of observations per day 
+ObsFile = 'Obstimes.dat'
 
 # telescope capabilities
 
-mag_limit = {'U':27.0, 'B':27.0, 'V':27.0, 'R':27.0, 'I':27.0, 'J':23.0, 'H':23.0, 'K':23.0,  'u':22.14, 'g':23.47, 'r':23.16, 'i':22.40, 'z':21.23}           # limiting magnitude in each band
+mag_limit = {'U':23.0, 'B':23.0, 'V':23.0, 'R':23.0, 'I':23.0, 'J':23.0, 'H':23.0, 'K':23.0,  'u':22.14, 'g':23.47, 'r':23.16, 'i':22.40, 'z':21.23}           # limiting magnitude in each band
 mag_resolution = 0.1	   #Resolution of the telescope in magnitudes (in most sensitive band)
 color_system = 'ugriz'#'ugriz'
 
@@ -54,14 +55,14 @@ use_CVIP     = 0
 use_CVdwarf  = 0
 use_AMCVn    = 0
 use_SNIa     = 0
-use_SNIb     = 1
+use_SNIb     = 0
 use_SNIc     = 0
 use_SNIIL    = 0
 use_SNIIP    = 0
 use_SNIInL   = 0
 use_SNIInP   = 0
 use_M3       = 0
-use_M3_5     = 0
+use_M3_5     = 1
 use_M4       = 0
 use_kilonova = 0	#Should have no entry in dataTransients.dat or peakmagsTransients.dat
 
@@ -90,6 +91,6 @@ Animation_loc = 'Leuven.mp4'
 # parameters for the data display and output
 outfile = 'test.dat'
 # band to show in animation. Must be consistent with choice of color system above.
-showbands = 'r'  
+showbands = 'ugr'  
 # should we use dust extinction in the calculations?
-use_dust = True
+use_dust = False

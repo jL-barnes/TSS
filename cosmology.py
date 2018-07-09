@@ -149,34 +149,34 @@ class Cosmology:
         """ 
         return self.Nfn(z) * 1e-9	#Convert to kpc^-3
 
-def Setup_Kcor(Kcormodel, colorsystem):
-    """
-    The setup of the K-corrections function. This includes time dilation
-    We take the file with the K-corrections (plus time dilation) and
-     make an interpolation for every color band.
-    The K-correction files have to be constructed with the jupyter notebook
-     called Auxiliary/Kcor.ipynb. 
-    Kcormodel: the name of the transient model as used in SNCosmo
-    colorsystem: The color system in use: UBVRI or ugriz
-    """
-    Kcorfile = h5py.File('LightCurveFiles/Kcorrections/%s_%s.hdf5' % (Kcormodel, colorsystem),'r')
-    Kcorfuns = {}
-    bands = list(colorsystem)
-    redshifts = Kcorfile['Z']
-    times = Kcorfile['times']
-    for band in bands:
-        K_band = Kcorfile[band][:]
-        Kcorfuns[band] = RectBivariateSpline(times, redshifts, K_band) 
-    return Kcorfuns
+class Kcor:
+    def __init__(self, Kcormodel, colorsystem):
+        """
+        The setup of the K-corrections function. This includes time dilation
+        We take the file with the K-corrections (plus time dilation) and
+         make an interpolation for every color band.
+        The K-correction files have to be constructed with the jupyter notebook
+         called Auxiliary/Kcor.ipynb. 
+        Kcormodel: the name of the transient model as used in SNCosmo
+        colorsystem: The color system in use: UBVRI or ugriz
+        """
+        Kcorfile = h5py.File('LightCurveFiles/Kcorrections/%s_%s.hdf5' % (Kcormodel, colorsystem),'r')
+        self.Kcorfuns = {}
+        bands = list(colorsystem)
+        redshifts = Kcorfile['Z']
+        times = Kcorfile['times']
+        for band in bands:
+            K_band = Kcorfile[band][:]
+            self.Kcorfuns[band] = RectBivariateSpline(times, redshifts, K_band) 
 
-def Sample_Kcor(Kcorfuns, band, time, redshift):
-    """
-    Sample the K-correction interpolation functions that were constructed
-     in the function above.
-    Kcorfuns: the K-corrections function as defined in Setup_Kcor
-    band: Color band in which to interpolate
-    time: The time in days after explosion that has to be sampled
-    redshift: redshift of the transient
-    """
-    return Kcorfuns[band](time, redshift)
+    def Sample_Kcor(self, band, time, redshift):
+        """
+        Sample the K-correction interpolation functions that were constructed
+         in the function above.
+        Kcorfuns: the K-corrections function as defined in Setup_Kcor
+        band: Color band in which to interpolate
+        time: The time in days after explosion that has to be sampled
+        redshift: redshift of the transient
+        """
+        return self.Kcorfuns[band](time, redshift)
 

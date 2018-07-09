@@ -89,7 +89,7 @@ class cell:
 
 class grid:
     def __init__(self, RA_lo, RA_hi, DEC_lo, DEC_hi, Dmax_xgal, N_dist, 
-                 N_dist_xgal, Gal_trans, Xgal_trans):
+                 N_dist_xgal, Gal_trans, Xgal_trans, obRun):
         rA_lo      = astCoords.hms2decimal(RA_lo,":")
         rA_hi      = astCoords.hms2decimal(RA_hi,":")
         dEC_lo     = astCoords.dms2decimal(DEC_lo,":")
@@ -113,6 +113,7 @@ class grid:
         self.h_xgal      = (Dmax_xgal - self.Dmax_MK)/float(N_dist_xgal)
         self.Gal_trans	 = Gal_trans    #Whether there are Gal transients
         self.Xgal_trans  = Xgal_trans	#Whether there are Xgal transients
+        self.bands       = obRun.bands
         if self.Xgal_trans:
             self.Cosmo = cm.Cosmology(Dmax_xgal)
         self.cellGrid    = self.makeCellGrid( hRA, hDec, self.h_DMW, self.h_xgal )
@@ -192,24 +193,24 @@ class grid:
             print "We cannot query the Argonaut server for 3D dust extinction"
 
         if query_works and pm.use_dust:
-            self.Xtr_dust = dust.Schlegel_Extinction(*coordboundaries)
+            self.Xtr_dust = dust.Schlegel_Extinction(self.bands, *coordboundaries)
         else:
             print "We'll have to exclude dust extinction for extragalactic transients in the simulation"
-            self.Xtr_dust = dust.No_dust()
+            self.Xtr_dust = dust.No_dust(self.bands)
 
         if self.Gal_trans and pm.use_dust:
             if query_works:
                 if dust.InSchultheisBoundary(*coordboundaries):
-                    self.Gal_dust = dust.Schultheis_Extinction(self.Xtr_dust, *coordboundaries)
+                    self.Gal_dust = dust.Schultheis_Extinction(self.Xtr_dust, self.bands, *coordboundaries)
                 elif dust.InGreenBoundary(*coordboundaries):
-                    self.Gal_dust = dust.Green_Extinction(self.Xtr_dust, *coordboundaries)
+                    self.Gal_dust = dust.Green_Extinction(self.Xtr_dust, self.bands, *coordboundaries)
                 else:
                     self.Gal_dust = self.Xtr_dust
             else:
-                self.Gal_dust = dust.No_dust()
+                self.Gal_dust = dust.No_dust(self.bands)
                 print  "We'll have to exclude dust extinction for galactic transients in the simulation"
         else:
-            self.Gal_dust = dust.No_dust()
+            self.Gal_dust = dust.No_dust(self.bands)
             print  "We'll have to exclude dust extinction for galactic transients in the simulation"
             
 
@@ -229,24 +230,39 @@ class grid:
         """
 
 class timeFrame:
-    def __init__( self, t_start, durObs, nPerDay ):
-        self.t_start = t_start * 8.64e4
-        self.t_end = ( t_start + durObs ) * 8.64e4
-        self.cadence = 8.64e4/float(nPerDay)
-        self.n_steps = int( durObs*nPerDay ) + 1
+    def __init__( self, File ):
+        self.JD        = []
+        self.Band      = []
+        self.read_Obsfile(File)
+        self.t_start = self.JD[0]
+        self.t_end = self.JD[-1]
+    def read_Obsfile(self, File):
+        with open(File) as Obsfile:
+            data = csv.reader(Obsfile, delimiter='\t')
+            for i,row in enumerate(data):
+                if i not in [0,1]:
+                    self.JD.append(float(row[0]) * 8.64e4)
+                    self.Band.append(row[1])
     def get_Dates( self ):
-        return np.linspace( self.t_start, self.t_end, self.n_steps )
+        #return np.linspace( self.t_start, self.t_end, self.n_steps )
+        return np.array(self.JD) - self.t_start
+    def get_ObBands( self ):
+        return self.Band
+    def get_Bands( self ):
+        return np.unique(self.Band)
     def get_relative_times( self ):
         dates = self.get_Dates()
         return dates[-1] - dates
 
 class observation:
     def __init__( self, RA_lo, RA_hi, DEC_lo, DEC_hi, N_dist_MW, N_dist_xgal, mag_lim,\
-                     t_start, durObs, nPerDay, Opts ):
+                     ObsFile, Opts ):
         # set up the transients list
         self.setTransientsList()
         # determine max distance (extra-galactic)
-        self.setUpColors( pm.color_system, pm.showbands )
+        self.TimeParams = timeFrame( ObsFile )
+        self.setUpColors( pm.color_system )
+        self.threshold = mag_lim
         self.mag_lim = [ mag_lim[ band ] for band in self.bands]
         brightest = 100.0 * np.ones( len( self.bands ) )
         Gal_trans, Xgal_trans = False, False 
@@ -274,16 +290,17 @@ class observation:
         print "Dmax_xgal = %.2e Mpc\n" % (Dmax_xgal/1e3)
         # set the properties of the sky window
         self.SkyGrid = grid( RA_lo, RA_hi, DEC_lo, DEC_hi, Dmax_xgal, N_dist_MW,\
-                                 N_dist_xgal, Gal_trans, Xgal_trans )
+                                 N_dist_xgal, Gal_trans, Xgal_trans, self )
         #self.SkyGrid.resize( 2.0, 1 )
         self.SkyGrid.setCellValues()
-        self.TimeParams = timeFrame( t_start, durObs, nPerDay )
-    def setUpColors( self, col, bands ):
+        self.obTimes = self.TimeParams.get_Dates()
+        self.obBands = self.TimeParams.get_ObBands()
+    def setUpColors( self, col ):
         if col.upper() == 'UBVRI': colr = col.upper()
         elif col.lower() == 'ugriz': colr = col.lower()
         else: print "Invalid color system selected."
         self.colorScheme = colr
-        self.bands = list(bands)
+        self.bands = self.TimeParams.get_Bands()
         self.nBands = len(self.bands)
     def setTransientsList( self ):
         self.transientsList = []
@@ -303,15 +320,17 @@ class observation:
         if pm.use_M3_5:     self.transientsList.append( 'M3_5' )
         if pm.use_M4:       self.transientsList.append( 'M4' )
     def take_data( self, transientDataSet, outFile ):
-        self.obTimes = self.TimeParams.get_Dates()
         tEnd = self.obTimes[-1]/8.64e4
         nTimeSteps = len( self.obTimes )
+        below_threshold = np.max(self.mag_lim) + 0.5 * pm.mag_resolution
         # how many transients do we have total? This assumes all are visible
+        """
         nTr_tot = 0
         for trTemp in transientDataSet.transient_templates:
+            print "Nrtrans", trTemp.N_trans
             nTr_tot += trTemp.N_trans
         # an array for all the magnitude data
-        mags = np.zeros( [nTr_tot, nTimeSteps, self.nBands]  )
+        mags = np.zeros( [nTr_tot, nTimeSteps]  )
         radec_coords = np.zeros( [nTr_tot,2] )
         # loop over all transients
         i = 0
@@ -322,34 +341,63 @@ class observation:
         for trTemp in transientDataSet.transient_templates:
             if trTemp.N_trans > 0:
                 trTypes +=  [it, trTemp.tag]
-                radec, bandSets = trTemp.sample_all_LCs( self.obTimes, self.mag_lim )
+                radec, bandSets, bandbands = trTemp.sample_all_LCs( self.obTimes, self.obBands, self.threshold )
                 if len(radec) == 0: 	#No transients for this type
                     it +=1
                     continue
                 imax = i + len( radec )
                 trIds += range(i, imax)
                 radec_coords[i:imax] = radec
-                Nrbands = len(bandSets[0])
-                mags[ i:imax,:,:Nrbands] = np.array( [np.array(bS).T for bS in bandSets] )
+                #Nrbands = len(bandSets[0])
+                for b in bandSets:
+                    print b
+                mags[ i:imax,:] = np.array( [np.array(bS).T for bS in bandSets] )
+                print mags
                 types.extend([it for i in range(i, imax)])
                 i = imax
                 it += 1
-        if i == 0: 
-            return
-        # adjust radec, mag array to exclude "null"-transients
-        radec_coords = radec_coords[0:imax,:]
-        mags  = mags[0:imax] 
-        below_threshold = np.max(self.mag_lim) + 0.5 * pm.mag_resolution
-        for i in range( self.nBands ):
-            mags[:,:,i][ mags[:,:,i] > self.mag_lim[i] ] = below_threshold
+        """
+        nTr_tot = 0
+        for trTemp in transientDataSet.transient_templates:
+            if trTemp.N_trans > 0:
+                trTemp.sample_all_LCs( self.obTimes, self.obBands, self.threshold )
+            nTr_tot += trTemp.N_trans
+            print "Nrtrans", trTemp.N_trans
 
+        # an array for all the magnitude data
+        mags = np.zeros( [nTr_tot, nTimeSteps]  )
+        radec_coords = np.zeros( [nTr_tot,2] )
+        # loop over all transients
+        i = 0
+        it = 0
+        trIds = []
+        trTypes = []
+        types = []
+        for trTemp in transientDataSet.transient_templates:
+            if trTemp.N_trans > 0:
+                trTypes +=  [it, trTemp.tag]
+                radec, bandSets, Passbands = trTemp.take_data()
+                imax = i + len( radec )
+                trIds += range(i, imax)
+                radec_coords[i:imax] = radec
+                #Nrbands = len(bandSets[0])
+                for x,b in enumerate(bandSets):
+                    maglimarray = np.array([self.threshold[band] for band in Passbands[x]])
+                    b[ b > maglimarray] = below_threshold 
+                mags[ i:imax,:] = np.array( [np.array(bS).T for bS in bandSets] )
+                types.extend([it for i in range(i, imax)])
+                i = imax
+                it += 1
+
+        if i == 0: 	#No transients at all found
+            return
+        """
         j=0
         for i,trTemp in enumerate(transientDataSet.transient_templates):
             if trTemp.N_trans > 0:
                 Bandsets = mags[ j : j + trTemp.N_trans]
                 j = trTemp.N_trans
-                #self.writetofile(trTemp, Bandsets)
-
+        """
         nTr_tot = imax
         # set up output file
         f = open( outFile, 'wb' )
@@ -362,16 +410,16 @@ class observation:
         elif self.colorScheme == 'ugriz':
             hdrs = ['iD','type','time', 'RA', 'DEC'] + [b for b in self.colorScheme] 
         """
-        hdrs = ['iD','type','time', 'RA', 'DEC'] + [b for b in self.bands]
+        hdrs = ['iD','type','time', 'RA', 'DEC', 'band']
         cwr.writerow(hdrs)
         # write out data
         for i in range( nTimeSteps ):
             for j in range( nTr_tot ):
                 radec = radec_coords[j]
-                bandDat = mags[j,i,:]
-                if min(bandDat) <= max(self.mag_lim):
-                    allDat = [trIds[j], types[j]] +  [self.obTimes[i]] + radec.tolist() + bandDat.tolist()
-                    cwr.writerow( allDat )
+                bandDat = mags[j,i]
+                passband = Passbands[j][i]
+                allDat = [trIds[j], types[j]] +  [self.obTimes[i]] + radec.tolist() + [bandDat] + [passband]
+                cwr.writerow( allDat )
         f.close()
 
     def writetofile(self, trTemp, bandSets):

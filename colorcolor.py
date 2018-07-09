@@ -36,7 +36,6 @@ class CCData:
         col_idstypes = np.array([1,2])
         col_idsbands = np.linspace( 5 , 5 + self.nBands - 1 , self.nBands ).astype(int) 
         col_ids = np.append(col_idstypes, col_idsbands)
-        print "hey"
         self.TRdata = [ data[data[:,0] == ID][:,col_ids] for ID in IDs ]
         self.times = tm
         dt = (tm[1] - tm[0])/8.64e4
