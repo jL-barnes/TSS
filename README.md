@@ -4,7 +4,7 @@ This is the Transient Sky Simulator, which provides the user with a way to estim
 
 ## Prerequisites
 
-The following Python packages are required:
+The following Python (2.7) packages are required:
 
 * numpy
 * scipy
