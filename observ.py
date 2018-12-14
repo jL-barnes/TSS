@@ -3,7 +3,6 @@ import csv
 from astLib import astCoords
 import MilkyWay as MW
 import params as pm
-import transient as trns
 import cosmology as cm
 import dust
 
@@ -24,7 +23,6 @@ class cell:
         self.Grid   = Grid	   # The grid to which this cell belongs to
     # a function to get the maximum variability in density over a cell
     def get_rho_var( self,raDec_key, midEdge_key ):
-        keyfound = False
         # define coordinates: ra/dec
         ralo, ramid, rahi = self.raMid-0.5*self.hRA, self.raMid, self.raMid+0.5*self.hRA
         declo, decmid, dechi = self.decMid-0.5*self.hDEC, self.decMid, self.decMid+0.5*self.hDEC
@@ -113,7 +111,8 @@ class grid:
         self.h_xgal      = (Dmax_xgal - self.Dmax_MK)/float(N_dist_xgal)
         self.Gal_trans	 = Gal_trans    #Whether there are Gal transients
         self.Xgal_trans  = Xgal_trans	#Whether there are Xgal transients
-        self.bands       = obRun.bands
+        self.obRun       = obRun
+        self.bands       = self.obRun.bands
         if self.Xgal_trans:
             self.Cosmo = cm.Cosmology(Dmax_xgal)
         self.cellGrid    = self.makeCellGrid( hRA, hDec, self.h_DMW, self.h_xgal )
@@ -186,48 +185,23 @@ class grid:
          the Schultheis as well as the Green map. Then Schultheis gets
          priority
         """
-        query_works = dust.query_works()
         coordboundaries = (self.RA_lo, self.RA_hi, self.DEC_lo, self.DEC_hi)
-
-        if not query_works:
-            print "We cannot query the Argonaut server for 3D dust extinction"
-
-        if query_works and pm.use_dust:
-            self.Xtr_dust = dust.Schlegel_Extinction(self.bands, *coordboundaries)
-        else:
-            print "We'll have to exclude dust extinction for extragalactic transients in the simulation"
-            self.Xtr_dust = dust.No_dust(self.bands)
-
-        if self.Gal_trans and pm.use_dust:
-            if query_works:
+        offline = self.obRun.Opts.offline
+        
+        if pm.use_dust:
+            self.Xtr_dust = dust.Schlegel_Extinction(self.bands, self.obRun.colorScheme, offline, *coordboundaries)
+            if self.Gal_trans:  #There are galactic transients
                 if dust.InSchultheisBoundary(*coordboundaries):
-                    self.Gal_dust = dust.Schultheis_Extinction(self.Xtr_dust, self.bands, *coordboundaries)
+                    self.Gal_dust = dust.Schultheis_Extinction(self.Xtr_dust, self.bands, self.obRun.colorScheme, *coordboundaries)
                 elif dust.InGreenBoundary(*coordboundaries):
-                    self.Gal_dust = dust.Green_Extinction(self.Xtr_dust, self.bands, *coordboundaries)
+                    self.Gal_dust = dust.Green_Extinction(self.Xtr_dust, self.bands, offline, self.obRun.colorScheme, *coordboundaries)
                 else:
                     self.Gal_dust = self.Xtr_dust
-            else:
-                self.Gal_dust = dust.No_dust(self.bands)
-                print  "We'll have to exclude dust extinction for galactic transients in the simulation"
         else:
+            print "Excluding dust extinction in the simulation"
+            self.Xtr_dust = dust.No_dust(self.bands)
             self.Gal_dust = dust.No_dust(self.bands)
-            print  "We'll have to exclude dust extinction for galactic transients in the simulation"
             
-
-        """
-        if dust.query_works() and pm.use_dust:
-            if dust.InSchultheisBoundary(*coordboundaries):
-                self.Gal_dust = dust.Schultheis_Extinction(*coordboundaries)
-            elif dust.InGreenBoundary(*coordboundaries):
-                self.Gal_dust = dust.Green_Extinction(*coordboundaries)
-            else:
-                self.Gal_dust = self.Xtr_dust
-        else:
-            if dust.InSchultheisBoundary(*coordboundaries) and pm.use_dust:
-                self.Gal_dust = dust.Schultheis_Extinction(*coordboundaries)
-            else:
-                self.Gal_dust = self.Xtr_dust
-        """
 
 class timeFrame:
     def __init__( self, File ):
@@ -255,12 +229,16 @@ class timeFrame:
         return dates[-1] - dates
 
 class observation:
-    def __init__( self, RA_lo, RA_hi, DEC_lo, DEC_hi, N_dist_MW, N_dist_xgal, mag_lim,\
-                     ObsFile, Opts ):
+    def __init__( self, RA_lo, RA_hi, DEC_lo, DEC_hi, N_dist_MW, N_dist_xgal,\
+                     mag_lim, Opts ):
         # set up the transients list
         self.setTransientsList()
+        self.Opts = Opts
         # determine max distance (extra-galactic)
-        self.TimeParams = timeFrame( ObsFile )
+        if self.Opts.file:
+            self.TimeParams = timeFrame( self.Opts.file )
+        else:
+            self.TimeParams = timeFrame( pm.ObsFile )
         self.setUpColors( pm.color_system )
         self.threshold = mag_lim
         self.mag_lim = [ mag_lim[ band ] for band in self.bands]
@@ -297,7 +275,9 @@ class observation:
         self.obBands = self.TimeParams.get_ObBands()
     def setUpColors( self, col ):
         if col.upper() == 'UBVRI': colr = col.upper()
-        elif col.lower() == 'ugriz': colr = col.lower()
+        elif col.lower() == 'sdss': colr = col.lower()
+        elif col.lower() == 'blackgem': colr = col.lower()
+        elif col.lower() == 'lsst': colr = col.lower()
         else: print "Invalid color system selected."
         self.colorScheme = colr
         self.bands = self.TimeParams.get_Bands()
@@ -320,7 +300,7 @@ class observation:
         if pm.use_M3_5:     self.transientsList.append( 'M3_5' )
         if pm.use_M4:       self.transientsList.append( 'M4' )
     def take_data( self, transientDataSet, outFile ):
-        tEnd = self.obTimes[-1]/8.64e4
+        #tEnd = self.obTimes[-1]/8.64e4
         nTimeSteps = len( self.obTimes )
         below_threshold = np.max(self.mag_lim) + 0.5 * pm.mag_resolution
         # how many transients do we have total? This assumes all are visible
@@ -404,12 +384,6 @@ class observation:
         # set up csv
         cwr = csv.writer( f, delimiter = '\t' )
         cwr.writerow( trTypes)# + [1, 'thing_1', 2, 'alien_flashlights'] )
-        """
-        if self.colorScheme == 'UBVRI':
-            hdrs = ['iD','type','time', 'RA', 'DEC'] + [b for b in self.bands]#[b for b in self.colorScheme] + ['J','H','K']
-        elif self.colorScheme == 'ugriz':
-            hdrs = ['iD','type','time', 'RA', 'DEC'] + [b for b in self.colorScheme] 
-        """
         hdrs = ['iD','type','time', 'RA', 'DEC', 'band']
         cwr.writerow(hdrs)
         # write out data

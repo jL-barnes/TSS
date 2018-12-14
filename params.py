@@ -31,20 +31,18 @@ DEC_hi = "-41:00:28"
 nCells_D = 1000          # number of cells in the distance direction (galactic)
 nCells_xgal = int(1e4)   # number of cells in the distance directions (extragalactic)
 
-# time of observation
-Obstimes = None		#Change to filename if you want to run from a file (like Obstimes.txt)
 
-# eventually: change this to a date so we can track the moon
-start_obs = 0.0
-dur_obs = 5.0            # duration of observation in days 
-nObs_per_day = 1.0         # number of observations per day 
+#start_obs = 0.0
+#dur_obs = 5.0            # duration of observation in days 
+#nObs_per_day = 1.0         # number of observations per day 
+#The file with observation times and color bands
 ObsFile = 'Obstimes.dat'
 
 # telescope capabilities
 
 mag_limit = {'U':23.0, 'B':23.0, 'V':23.0, 'R':23.0, 'I':23.0, 'J':23.0, 'H':23.0, 'K':23.0,  'u':22.14, 'g':23.47, 'r':23.16, 'i':22.40, 'z':21.23}           # limiting magnitude in each band
 mag_resolution = 0.1	   #Resolution of the telescope in magnitudes (in most sensitive band)
-color_system = 'ugriz'#'ugriz'
+color_system = 'blackgem'	   #Choose from 'UBVRI', 'sdss', 'lsst' or 'blackgem'
 
 
 # Transients to use. Set to zero to leave out of calculation.
@@ -52,17 +50,17 @@ color_system = 'ugriz'#'ugriz'
 use_nova     = 0
 use_CVpolar  = 0
 use_CVIP     = 0
-use_CVdwarf  = 0
+use_CVdwarf  = 1
 use_AMCVn    = 0
 use_SNIa     = 0
-use_SNIb     = 0
+use_SNIb     = 1
 use_SNIc     = 0
 use_SNIIL    = 0
 use_SNIIP    = 0
 use_SNIInL   = 0
 use_SNIInP   = 0
 use_M3       = 0
-use_M3_5     = 1
+use_M3_5     = 0
 use_M4       = 0
 use_kilonova = 0	#Should have no entry in dataTransients.dat or peakmagsTransients.dat
 
@@ -89,8 +87,7 @@ MDwarfFile = 'data_MDwarfs.dat'
 Animation_loc = 'Leuven.mp4'
 
 # parameters for the data display and output
-outfile = 'test.dat'
-# band to show in animation. Must be consistent with choice of color system above.
-showbands = 'ugr'  
+outfile = 'lsst.dat'
+  
 # should we use dust extinction in the calculations?
-use_dust = False
+use_dust = True

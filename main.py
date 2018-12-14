@@ -22,7 +22,7 @@ def main():
     ###################################
     observingRun = ob.observation( pm.RA_lo, pm.RA_hi, pm.DEC_lo, pm.DEC_hi,\
                                     pm.nCells_D, pm.nCells_xgal, pm.mag_limit,\
-                                    pm.ObsFile, Opts )
+                                    Opts )
 
     ###################################
     # Set up transient templates
@@ -79,6 +79,8 @@ def getOpts():
     parser.add_argument("-o", "--option", nargs = '*', help="Execute an extra function after the generation of transients. Choose either 'Animate' or 'ColorColor'")
     parser.add_argument("-p", "--params", help="Define a file with observation parameters. If a previous params.py file exists, it'll be copied to params_old.py and the new file will overwrite params.py. If params_old.py exists, it will be overwritten.")
     parser.add_argument("-f", "--file", help="File with observation times. This can also be entered in params.py")
+    parser.add_argument("-l", "--offline", action='store_true', help ="Execute the calculations fully offline. This usually takes a lot longer!")
+    parser.set_defaults(feature=True)
     args = parser.parse_args()
     return args
 
@@ -102,6 +104,7 @@ if __name__ == "__main__":
     [-o] [--option]  'Animate' and/or 'ColorColor' 
     [-f] [--file]    The Obstimes file e.g. 'Obstimes.txt' This can also be entered in params.py
     [-p] [--params]  Use a different params file.
+    [-l] [--offline] Execute offline
     [-h] [--help]    Print help function
     """
     print getOpts()

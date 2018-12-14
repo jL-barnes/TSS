@@ -4,6 +4,7 @@ from scipy.interpolate import RectBivariateSpline
 import h5py
 import numpy as np
 import localcosmolopy as lcm
+import params as pm
 
 Mpc = 3.0857e22		#meter
 H0 = 67.3
@@ -150,7 +151,7 @@ class Cosmology:
         return self.Nfn(z) * 1e-9	#Convert to kpc^-3
 
 class Kcor:
-    def __init__(self, Kcormodel, colorsystem):
+    def __init__(self, Kcormodel, obBands):
         """
         The setup of the K-corrections function. This includes time dilation
         We take the file with the K-corrections (plus time dilation) and
@@ -158,11 +159,11 @@ class Kcor:
         The K-correction files have to be constructed with the jupyter notebook
          called Auxiliary/Kcor.ipynb. 
         Kcormodel: the name of the transient model as used in SNCosmo
-        colorsystem: The color system in use: UBVRI or ugriz
+        colorsystem: The color system in use: UBVRI, sdss, blackgem or lsst
         """
-        Kcorfile = h5py.File('LightCurveFiles/Kcorrections/%s_%s.hdf5' % (Kcormodel, colorsystem),'r')
+        Kcorfile = h5py.File('LightCurveFiles/Kcorrections/%s_%s.hdf5' % (Kcormodel, pm.color_system),'r')
         self.Kcorfuns = {}
-        bands = list(colorsystem)
+        bands = obBands
         redshifts = Kcorfile['Z']
         times = Kcorfile['times']
         for band in bands:

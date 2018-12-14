@@ -1,36 +1,43 @@
-import numpy as np
-import params as pm
-import json, requests
 import h5py
 import math
+import numpy as np
+import astropy.units as u
+from dustmaps import sfd
+from dustmaps import bayestar
 from astLib import astCoords
-from astropy import units as u
 from itertools import chain
+from astropy.coordinates import SkyCoord
 from scipy.interpolate import RectBivariateSpline
 from scipy.interpolate import RegularGridInterpolator
 
-#https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/LCYHJG
-#source of dustmaps-package fro Green et al.
-#http://dustmaps.readthedocs.io/en/latest/_modules/dustmaps/bayestar.html#BayestarQuery
 
-
-RV_BV = {'U':4.334, 'B':3.626, 'V':2.742, 'R':2.169, 'I':1.505, 'J':0.764, 'H':0.449, 'K':0.302, 'u':4.239, 'g':3.303, 'r':2.285, 'i':1.698, 'z':1.263}
+RV_BV = {'UBVRI':   {'U':4.334, 'B':3.626, 'V':2.742, 'R':2.169, 'I':1.505},
+         'sdss':    {'u':4.239, 'g':3.303, 'r':2.285, 'i':1.698, 'z':1.263},
+         'blackgem':{'u':4.091, 'g':3.277, 'r':2.286, 'i':1.672, 'z':1.230, 'q':2.625},
+         'lsst':    {'u':4.145, 'g':3.237, 'r':2.273, 'i':1.684, 'z':1.323, 'y':1.088}
+        }
 #3.1 at http://iopscience.iop.org/article/10.1088/0004-637X/737/2/103#apj398709t6
-RV_JK = { key: RV_BV[key] * 1.748 for key in RV_BV.keys() }
+#RV_JK = 1.748 * RV_BV 
+RV_JK = { key: { k: RV_BV[key][k] * 1.748 for k in RV_BV[key].keys() } 
+          for key in RV_BV.keys()}
+
 emptyval = 1000.0
 
 class Green_Extinction:
-    def __init__(self, Xtr_dust, bands, RA_lo, RA_hi, DEC_lo, DEC_hi):
-        self.Name        = "Green et al. (2017)"
-        self.Ang_Res     = 0.05667	#deg (=3.4 arcmin)
+    def __init__(self, Xtr_dust, bands, colorsystem, offline, RA_lo, RA_hi, DEC_lo, DEC_hi):
+        self.Name        = "Green et al. (2018)"
+        self.Ang_Res     = 0.05667	#deg (=3.4 arcmin) = minimum angular res.
+        self.conv        = 0.884	    #Conversion factor: E(B-V) = 0.884*alpha
         self.bands       = bands
         self.RA_lo       = RA_lo
         self.RA_hi       = RA_hi
         self.DEC_lo      = DEC_lo
         self.DEC_hi      = DEC_hi
         self.queried     = False
+        self.offline     = offline
         self.f           = self.Setup_dust_grid()
         self.Xtr_dust    = Xtr_dust
+        self.RV_BV       = RV_BV[colorsystem]
 
     def Sample_extinction(self, ra, dec, D):
         """
@@ -52,7 +59,7 @@ class Green_Extinction:
             A = self.Xtr_dust.Sample_extinction(ra, dec)
         else:
             for color in self.bands:
-                A[color] = float(EBV) * RV_BV[color] 
+                A[color] = float(EBV) * self.RV_BV[color] 
         return A   
 
     def Setup_dust_grid(self):
@@ -64,12 +71,13 @@ class Green_Extinction:
          and add grid points 0.5*Ang_Res across this border
         We add 1 extra RA-coord to have an angular resolution slightly
          smaller than angres
-        We then query the Green dust map with the 'full' mode (which
-         is actually faster than the 'lite' mode)
-        Subsequently we convert the 2D grid of Bestfit into a 3D grid
+        We then query the Green dust map
+        Subsequently we convert the 2D object of DQ into a 3D grid
         We add data points for a distance modulus of zero (we assume 
          the EBV at d=0 to be zero)
         And finally we Interpolate this grid with linear interpolation
+        We have to convert the output of the Green dust query (alpha) to E(B-V)
+         by multiplying it with self.conv
         If one samples a coordinate outside the interpolation 
          boundaries, it will return the value -100 
         """
@@ -84,24 +92,23 @@ class Green_Extinction:
         RA, DEC = np.meshgrid(ra,dec)
         RA = list(chain.from_iterable(RA))
         DEC = list(chain.from_iterable(DEC))
-
-        DQ = Greendustquery(RA,DEC, mode='full')	#Query Argonaut
+        
+        #Query Argonaut
+        DQ = Greendustquery(RA,DEC, self.offline, Mode = 'galactic')	
 
         D = [0]		#Distance modulus zero isn't included in query
-        D.extend(DQ['distmod'])
+        D.extend(np.linspace(4.,19.,31))    #The distance moduli as queried
         Dlen = len(D)
-        Bestfit = DQ['best']
 
         EBV = np.zeros((len(ra), len(dec), Dlen))
         for i in range( len(dec) ):
             for j in range( len(ra) ):
                 Onecoord = [0]			#The EBV at d=0 at one coordinate
-                Onecoord.extend(Bestfit[i+j])	#extend with EBV at other ds
-                #print Onecoord
-                EBV[j,i,:] = Onecoord
+                Onecoord.extend(DQ[i+j])	#extend with EBV at other ds
+                EBV[j,i,:] = self.conv * Onecoord
 
         self.queried = True
-
+        
         return RegularGridInterpolator((ra,dec,D), EBV,
                                        method='linear',  
                                        bounds_error = False, 
@@ -111,8 +118,8 @@ class Green_Extinction:
 
 
 class Schlegel_Extinction:
-    def __init__(self, bands, RA_lo, RA_hi, DEC_lo, DEC_hi):
-        self.Name        = "Schlegel (1998) with the query API from Green et al. (2015)"
+    def __init__(self, bands, colorsystem, offline, RA_lo, RA_hi, DEC_lo, DEC_hi):
+        self.Name        = "Schlegel (1998)"
         self.Ang_Res     = 0.1017	#deg (=6.1 arcmin)
         self.bands       = bands
         self.RA_lo       = RA_lo
@@ -120,7 +127,9 @@ class Schlegel_Extinction:
         self.DEC_lo      = DEC_lo
         self.DEC_hi      = DEC_hi
         self.queried     = False
+        self.offline     = offline
         self.f           = self.Setup_dust_grid()
+        self.RV_BV       = RV_BV[colorsystem]
 
     def Sample_extinction(self, ra, dec):
         """
@@ -131,7 +140,7 @@ class Schlegel_Extinction:
         EBV = self.f(ra,dec)
         A = {}
         for color in self.bands:
-            A[color] = float(EBV) * RV_BV[color] 
+            A[color] = float(EBV) * self.RV_BV[color] 
         return A   
 
     def Setup_dust_grid(self):
@@ -157,12 +166,11 @@ class Schlegel_Extinction:
         RA = list(chain.from_iterable(RA))
         DEC = list(chain.from_iterable(DEC))
 
-        DQ = Greendustquery(RA, DEC, coordsys='equ', mode='sfd')
-        SFD = DQ['EBV_SFD']
+        DQ = Greendustquery(RA, DEC, self.offline, Mode='extragalactic')
         EBV = np.zeros( (len(ra), len(dec)) )
         ra_len = len(ra)
         for i in range( len(dec) ):
-            EBV[:,i] = SFD[i*ra_len: (i+1)*ra_len]
+            EBV[:,i] = DQ[i*ra_len: (i+1)*ra_len]
 
         self.queried = True        
         return RectBivariateSpline(ra, dec, EBV)
@@ -170,8 +178,8 @@ class Schlegel_Extinction:
 
 
 
-class Schultheis_Extinction:
-    def __init__(self, Xtr_dust, bands, RA_lo, RA_hi, DEC_lo, DEC_hi):
+class Schultheis_Extinction2:
+    def __init__(self, Xtr_dust, colorsystem, bands, RA_lo, RA_hi, DEC_lo, DEC_hi):
         self.Name        = "Schultheis et al. (2014)"
         self.Ang_Res     = 0.1	#deg (=6 arcmin)
         self.bands       = bands
@@ -183,6 +191,7 @@ class Schultheis_Extinction:
         self.queried     = False
         self.f           = self.Setup_dust_grid()
         self.Xtr_dust    = Xtr_dust
+        self.RV_JK       = RV_JK[colorsystem]
 
     def Sample_extinction(self, ra, dec, D):
         """
@@ -197,7 +206,6 @@ class Schultheis_Extinction:
         D: distance to transient in kpc
         """
         D = D 
-        #lon, lat = 0,0
         lon, lat = astCoords.convertCoords( "J2000", "GALACTIC", ra, dec, 2000 )
         if lon > 180: lon -= 360	#Here lon runs from -180 to 180
         A = {}
@@ -206,7 +214,7 @@ class Schultheis_Extinction:
             A = self.Xtr_dust.Sample_extinction(ra, dec)
         else:
             for color in self.bands:
-                A[color] = float(EJK) * RV_JK[color] 
+                A[color] = float(EJK) * self.RV_JK[color] 
         return A 
 
     def Setup_dust_grid(self):
@@ -249,18 +257,7 @@ class No_dust:
 
 
 
-
-def query_works ():
-    """
-    Test if we can connect to the Argonaut server by pinging it
-    """
-    try:
-        requests.get('http://argonaut.skymaps.info/gal-lb-query-light')
-    except requests.exceptions.ConnectionError:
-        return False
-    return True
-
-
+#%%
 def InGreenBoundary(RA_lo, RA_hi, DEC_lo, DEC_hi):
     """
     Test if the RA and DEC are within the boundaries
@@ -269,11 +266,13 @@ def InGreenBoundary(RA_lo, RA_hi, DEC_lo, DEC_hi):
      within the boundary, we'll get green light to use this
      3D map.
     """
-    RAs  = [RA_lo, RA_lo, RA_hi, RA_hi]
-    DECs = [DEC_lo, DEC_hi, DEC_lo, DEC_hi]
-    DQ   = dustquery(RAs, DECs, coordsys='equ', mode='full')
-    return np.any(DQ['converged'])
-
+    RAs  = np.array([RA_lo, RA_lo, RA_hi, RA_hi]) * u.deg
+    DECs = np.array([DEC_lo, DEC_hi, DEC_lo, DEC_hi]) * u.deg
+    Coords = SkyCoord(RAs, DECs, frame='icrs')
+    Bayestar = bayestar.BayestarWebQuery(version='bayestar2017')
+    DQ   = Bayestar(Coords, mode='best')
+    return np.any(DQ > 0.)
+#%%
 def InSchultheisBoundary(RA_lo, RA_hi, DEC_lo, DEC_hi):
     """
     Test if any of the outer coordinates of the field of view
@@ -293,7 +292,7 @@ def InSchultheisBoundary(RA_lo, RA_hi, DEC_lo, DEC_hi):
             break
     return inSchultheis
 
-def Greendustquery(lon, lat, coordsys='equ', mode='full'):
+def Greendustquery(ra, dec, offline, Mode='galactic'):
     """
     A wrapper to make sure that the data is in the right format for
      the Argonaut server.
@@ -303,86 +302,43 @@ def Greendustquery(lon, lat, coordsys='equ', mode='full'):
     It also only extracts the important entries of the dustquery.
      Likewise, 'distmod' is only needed once in Dust_Ext
     """
-    Total_len = len(lon)
-    if Total_len > 5000:
-        if mode == 'lite' or mode == 'full':
-            Dust_Ext = {'best': [], 'distmod' : []}
-        else:
-            Dust_Ext = {'EBV_SFD': []}
-        while len(lon) > 0:
-            lon_part_len = min(5000, len(lon) )
-            lon_part = lon[ 0:lon_part_len ]
-            lon = lon[ lon_part_len: ]
-            lat_part = lat[ 0:lon_part_len ]
-            lat = lat[ lon_part_len: ]
-            print ("Querying the Argonaut server for dust data in %d"
-                   " out of %d data points" % (lon_part_len, Total_len))
-            Dust = dustquery(lon_part, lat_part, coordsys, mode)
-            if mode == 'lite' or mode == 'full':
-                best = Dust_Ext['best']
-                Dust_Ext['best'] += Dust['best']
-                Dust_Ext['distmod'] = Dust['distmod']
-            elif mode == 'sfd':
-                Dust_Ext['EBV_SFD'] += Dust['EBV_SFD'] 
+    Total_len = len(ra)
+    if offline:
+        if Mode == 'galactic':
+            Query = bayestar.BayestarQuery(version='bayestar2017')
+        elif Mode == 'extragalactic':
+            Query = sfd.SFDQuery()    
     else:
-        print "Querying the Argonaut server for dust data..."
-        Dust_Ext = dustquery(lon, lat, coordsys, mode)
+        if Mode == 'galactic':
+            Query = bayestar.BayestarWebQuery(version='bayestar2017')
+        elif Mode == 'extragalactic':
+            Query = sfd.SFDWebQuery()
+    if Total_len > 5000:
+        Dust_Ext = []
+        while len(ra) > 0:
+            ra_part_len = min(5000, len(ra) )
+            ra_part = np.array(ra[ 0:ra_part_len ]) * u.deg
+            ra = ra[ ra_part_len: ]
+            dec_part = np.array(dec[ 0:ra_part_len ]) * u.deg
+            dec = dec[ ra_part_len: ]
+            print ("Querying remote server for Bayestar dust data in %d"
+                   " out of %d data points" % (ra_part_len, Total_len))
+            Coords = SkyCoord(ra_part, dec_part, frame='icrs')
+            if Mode == 'galactic':
+                Dust = Query(Coords, mode='best')
+            elif Mode == 'extragalactic':
+                Dust = Query(Coords)
+            else: raise ValueError("Incorrect mode entered in the Dust query")
+            Dust_Ext.extend(Dust)
+        Dust_Ext = np.array(Dust_Ext)
+    else:
+        print "Querying remote server for Bayestar dust data..."
+        ra = np.array(ra) * u.deg
+        dec = np.array(dec) * u.deg
+        Coords = SkyCoord(ra, dec, frame='icrs')
+        if Mode == 'galactic':
+            Dust_Ext = Query(Coords, mode='best')
+        elif Mode == 'extragalactic':
+            Dust_Ext = Query(Coords)
 
     return Dust_Ext
-
-def dustquery(lon, lat, coordsys='equ', mode='full'):
-    '''
-    Send a line-of-sight reddening query to the Argonaut web server.
-
-    Inputs:
-      lon, lat: longitude and latitude, in degrees.
-      coordsys: 'gal' for Galactic, 'equ' for Equatorial (J2000).
-      mode: 'full', 'lite' or 'sfd'
-    
-    In 'full' mode, outputs a dictionary containing, among other things:
-      'distmod':    The distance moduli that define the distance bins.
-      'best':       The best-fit (maximum proability density)
-                    line-of-sight reddening, in units of SFD-equivalent
-                    E(B-V), to each distance modulus in 'distmod.' See
-                    Schlafly & Finkbeiner (2011) for a definition of the
-                    reddening vector (use R_V = 3.1).
-      'samples':    Samples of the line-of-sight reddening, drawn from
-                    the probability density on reddening profiles.
-      'success':    1 if the query succeeded, and 0 otherwise.
-      'converged':  1 if the line-of-sight reddening fit converged, and
-                    0 otherwise.
-      'n_stars':    # of stars used to fit the line-of-sight reddening.
-      'DM_reliable_min':  Minimum reliable distance modulus in pixel.
-      'DM_reliable_max':  Maximum reliable distance modulus in pixel.
-  
-    Less information is returned in 'lite' mode, while in 'sfd' mode,
-    the Schlegel, Finkbeiner & Davis (1998) E(B-V) is returned.
-    '''
- 
-    url = 'http://argonaut.skymaps.info/gal-lb-query-light'
-   
-    payload = {'mode': mode}
-    
-    if coordsys.lower() in ['gal', 'g']:
-        payload['l'] = lon
-        payload['b'] = lat
-    elif coordsys.lower() in ['equ', 'e']:
-        payload['ra'] = lon
-        payload['dec'] = lat
-    else:
-        raise ValueError("coordsys '{0}' not understood.".format(coordsys))
-  
-    headers = {'content-type': 'application/json'}
-  
-    r = requests.post(url, data=json.dumps(payload), headers=headers)
-  
-    try:
-        r.raise_for_status()
-    except requests.exceptions.HTTPError as e:
-        print('Response received from Argonaut:')
-        print(r.text)
-        raise e
-   
-    return json.loads(r.text)
-
-
