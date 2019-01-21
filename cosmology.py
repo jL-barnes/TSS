@@ -4,7 +4,6 @@ from scipy.interpolate import RectBivariateSpline
 import h5py
 import numpy as np
 import localcosmolopy as lcm
-import params as pm
 
 Mpc = 3.0857e22		#meter
 H0 = 67.3
@@ -31,9 +30,10 @@ class Cosmology:
                                               omega_lambda_0 = self.Omega_L, 
                                               omega_k_0 = self.Omega_K, 
                                               h= self.H0/1e5 * Mpc)
-        self.fn = interpolate.interp1d(self.Darray, self.Zarray)
+        self.fn = interpolate.interp1d(self.Darray, self.Zarray)#,
+                                       #fill_value = "extrapolate")
         self.factor = 0.001759927	#The normalization factor for PSI
-                                        #Now set to be the factor for SN Ia
+                                    #Default is the factor for SN Ia
 
     def get_redshift(self, DL):
         """
@@ -41,9 +41,9 @@ class Cosmology:
         DL: Luminosity distance in Mpc
         returns: redshift
         """
-        #print self.MaxDist
+        #print "maxdist", self.MaxDist
         #if self.fn(DL) > 0.1:
-        #    print DL, self.fn(DL)
+            #print DL, self.fn(DL)
         return self.fn(DL)
 
 
@@ -151,7 +151,7 @@ class Cosmology:
         return self.Nfn(z) * 1e-9	#Convert to kpc^-3
 
 class Kcor:
-    def __init__(self, Kcormodel, obBands):
+    def __init__(self, Kcormodel, colorsys, obBands):
         """
         The setup of the K-corrections function. This includes time dilation
         We take the file with the K-corrections (plus time dilation) and
@@ -161,7 +161,7 @@ class Kcor:
         Kcormodel: the name of the transient model as used in SNCosmo
         colorsystem: The color system in use: UBVRI, sdss, blackgem or lsst
         """
-        Kcorfile = h5py.File('LightCurveFiles/Kcorrections/%s_%s.hdf5' % (Kcormodel, pm.color_system),'r')
+        Kcorfile = h5py.File('LightCurveFiles/Kcorrections/%s_%s.hdf5' % (Kcormodel, colorsys),'r')
         self.Kcorfuns = {}
         bands = obBands
         redshifts = Kcorfile['Z']
@@ -178,6 +178,10 @@ class Kcor:
         band: Color band in which to interpolate
         time: The time in days after explosion that has to be sampled
         redshift: redshift of the transient
+        The redshift cannot be larger than 2 due to limitations of the K-correction data
         """
+        if redshift > 2: redshift = 2
         return self.Kcorfuns[band](time, redshift)
+    
+
 

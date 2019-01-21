@@ -32,29 +32,35 @@ nCells_D = 1000          # number of cells in the distance direction (galactic)
 nCells_xgal = int(1e4)   # number of cells in the distance directions (extragalactic)
 
 
-#start_obs = 0.0
-#dur_obs = 5.0            # duration of observation in days 
-#nObs_per_day = 1.0         # number of observations per day 
-#The file with observation times and color bands
-ObsFile = 'Obstimes.dat'
+"""
+Telescope capabilities
 
-# telescope capabilities
+mag_limit:      limiting magnitude in each filter band
+mag_resolution: Resolution of the telescope in magnitudes (in most sensitive band)
+aperture_DEC:   Telescope aperture in DEC direction (in degrees)
+aperture_RA:    Telescope aperture in RA direction (in degrees)
+color_system:   The color system corresponding to ugriz(y)(q)
+                Choose from 'sdss', 'lsst' or 'blackgem'
+                The UBVRI color scheme is always loaded
+"""
 
-mag_limit = {'U':23.0, 'B':23.0, 'V':23.0, 'R':23.0, 'I':23.0, 'J':23.0, 'H':23.0, 'K':23.0,  'u':22.14, 'g':23.47, 'r':23.16, 'i':22.40, 'z':21.23}           # limiting magnitude in each band
-mag_resolution = 0.1	   #Resolution of the telescope in magnitudes (in most sensitive band)
-color_system = 'blackgem'	   #Choose from 'UBVRI', 'sdss', 'lsst' or 'blackgem'
+#mag_limit      = {'U':21.0, 'B':21.0, 'V':21.0, 'R':21.0, 'I':21.0, 'u':20.9, 'g':22.9, 'r':22.3, 'i':21.7, 'z':21.4} 
+mag_limit      = {'U':21.0, 'B':21.0, 'V':21.0, 'R':21.0, 'I':21.0, 'u':19.9, 'g':20.9, 'r':20.3, 'i':20.7, 'z':20.4} 
+mag_resolution = 0.1	
+aperture_DEC   = 1.64317
+aperture_RA    = 1.64317
+color_system   = 'blackgem'
+
 
 
 # Transients to use. Set to zero to leave out of calculation.
 
 use_nova     = 0
-use_CVpolar  = 0
-use_CVIP     = 0
-use_CVdwarf  = 1
+use_CVdwarf  = 0
 use_AMCVn    = 0
-use_SNIa     = 0
+use_SNIa     = 1
 use_SNIb     = 1
-use_SNIc     = 0
+use_SNIc     = 1
 use_SNIIL    = 0
 use_SNIIP    = 0
 use_SNIInL   = 0
@@ -62,7 +68,16 @@ use_SNIInP   = 0
 use_M3       = 0
 use_M3_5     = 0
 use_M4       = 0
-use_kilonova = 0	#Should have no entry in dataTransients.dat or peakmagsTransients.dat
+use_kilonova = 0	 #Should have no entry in dataTransients.dat or peakmagsTransients.dat
+
+"""
+Other transients that you have added yourself can be put in this array.
+They will ALWAYS be used
+Please use the same name (with the same capitalization) in:
+ - dataTransients.dat
+ - peakmagsTransients.dat
+"""
+Extra_transients = []
 
 #Data for the kilonova injection
 maxLIGODist = 5.25e26    #cm = 170 Mpc
@@ -72,7 +87,7 @@ k_mvRed	    = [0.04,0.15]#[Msun,c] Ejecta mass and velocity of red component
 k_mvBlue    = [0.025,0.3]#[Msun,c] Ejecta mass and velocity of blue component
 			 #To only have a red(blue) component, set k_mvRed(k_mvBlue)=None
 
-# File holding data for the transients:
+# File holding general data for the transients:
 transientFile = 'dataTransients.dat'
 #transientFile = 'test.dat'
 
@@ -84,10 +99,7 @@ MDwarfFile = 'data_MDwarfs.dat'
 
 
 #Place to save the animation
-Animation_loc = 'Leuven.mp4'
+Animation_loc = 'Animation.mp4'
 
-# parameters for the data display and output
+#Output file
 outfile = 'lsst.dat'
-  
-# should we use dust extinction in the calculations?
-use_dust = True

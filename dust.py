@@ -1,6 +1,7 @@
 import h5py
 import math
 import numpy as np
+import Filterchar as fc
 import astropy.units as u
 from dustmaps import sfd
 from dustmaps import bayestar
@@ -11,20 +12,11 @@ from scipy.interpolate import RectBivariateSpline
 from scipy.interpolate import RegularGridInterpolator
 
 
-RV_BV = {'UBVRI':   {'U':4.334, 'B':3.626, 'V':2.742, 'R':2.169, 'I':1.505},
-         'sdss':    {'u':4.239, 'g':3.303, 'r':2.285, 'i':1.698, 'z':1.263},
-         'blackgem':{'u':4.091, 'g':3.277, 'r':2.286, 'i':1.672, 'z':1.230, 'q':2.625},
-         'lsst':    {'u':4.145, 'g':3.237, 'r':2.273, 'i':1.684, 'z':1.323, 'y':1.088}
-        }
-#3.1 at http://iopscience.iop.org/article/10.1088/0004-637X/737/2/103#apj398709t6
-#RV_JK = 1.748 * RV_BV 
-RV_JK = { key: { k: RV_BV[key][k] * 1.748 for k in RV_BV[key].keys() } 
-          for key in RV_BV.keys()}
 
 emptyval = 1000.0
 
 class Green_Extinction:
-    def __init__(self, Xtr_dust, bands, colorsystem, offline, RA_lo, RA_hi, DEC_lo, DEC_hi):
+    def __init__(self, Xtr_dust, bands, colorscheme, offline, RA_lo, RA_hi, DEC_lo, DEC_hi):
         self.Name        = "Green et al. (2018)"
         self.Ang_Res     = 0.05667	#deg (=3.4 arcmin) = minimum angular res.
         self.conv        = 0.884	    #Conversion factor: E(B-V) = 0.884*alpha
@@ -37,7 +29,8 @@ class Green_Extinction:
         self.offline     = offline
         self.f           = self.Setup_dust_grid()
         self.Xtr_dust    = Xtr_dust
-        self.RV_BV       = RV_BV[colorsystem]
+        self.RV_BV       = fc.RV_BV[colorscheme]
+        self.RV_BV.update(fc.RV_BV['UBVRI'])
 
     def Sample_extinction(self, ra, dec, D):
         """
@@ -118,7 +111,7 @@ class Green_Extinction:
 
 
 class Schlegel_Extinction:
-    def __init__(self, bands, colorsystem, offline, RA_lo, RA_hi, DEC_lo, DEC_hi):
+    def __init__(self, bands, colorscheme, offline, RA_lo, RA_hi, DEC_lo, DEC_hi):
         self.Name        = "Schlegel (1998)"
         self.Ang_Res     = 0.1017	#deg (=6.1 arcmin)
         self.bands       = bands
@@ -129,7 +122,8 @@ class Schlegel_Extinction:
         self.queried     = False
         self.offline     = offline
         self.f           = self.Setup_dust_grid()
-        self.RV_BV       = RV_BV[colorsystem]
+        self.RV_BV       = fc.RV_BV[colorscheme]
+        self.RV_BV.update(fc.RV_BV['UBVRI'])
 
     def Sample_extinction(self, ra, dec):
         """
@@ -178,8 +172,8 @@ class Schlegel_Extinction:
 
 
 
-class Schultheis_Extinction2:
-    def __init__(self, Xtr_dust, colorsystem, bands, RA_lo, RA_hi, DEC_lo, DEC_hi):
+class Schultheis_Extinction:
+    def __init__(self, Xtr_dust, colorscheme, bands, RA_lo, RA_hi, DEC_lo, DEC_hi):
         self.Name        = "Schultheis et al. (2014)"
         self.Ang_Res     = 0.1	#deg (=6 arcmin)
         self.bands       = bands
@@ -191,7 +185,8 @@ class Schultheis_Extinction2:
         self.queried     = False
         self.f           = self.Setup_dust_grid()
         self.Xtr_dust    = Xtr_dust
-        self.RV_JK       = RV_JK[colorsystem]
+        self.RV_JK       = fc.RV_JK[colorscheme]
+        self.RV_JK.update(fc.RV_JK['UBVRI'])
 
     def Sample_extinction(self, ra, dec, D):
         """

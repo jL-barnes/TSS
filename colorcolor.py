@@ -17,7 +17,7 @@ class CCData:
         else:
             self.mag_norm = np.min( data[:,5:])
         # set the window for the observation
-        tm, IDs, ras, decs = np.unique(data[:,2]), np.unique(data[:,0]), data[:,3], data[:,4]
+        tm, self.IDs, ras, decs, self.bandObs = np.unique(data[:,2]), np.unique(data[:,0]), data[:,3], data[:,4], data[:,6]
         if not fromfile:
             self.ra_min   = astCoords.hms2decimal(pm.RA_lo,":")
             self.ra_max   = astCoords.hms2decimal(pm.RA_hi,":")
@@ -35,8 +35,19 @@ class CCData:
         self.nBands = 3
         col_idstypes = np.array([1,2])
         col_idsbands = np.linspace( 5 , 5 + self.nBands - 1 , self.nBands ).astype(int) 
-        col_ids = np.append(col_idstypes, col_idsbands)
-        self.TRdata = [ data[data[:,0] == ID][:,col_ids] for ID in IDs ]
+        #col_ids = np.append(col_idstypes, col_idsbands)
+        col_ids = np.array([0,1,3,4,5])
+        #self.TRdata = [ data[data[:,0] == ID][:,col_ids] for ID in IDs ]
+        self.time_data  = []
+        self.mag_data   = []
+        self.band_data  = []
+        self.trtype_data= []
+        for ID in IDs:
+            Bool = data[:,0] == ID
+            self.time_data.append( data[Bool, 2] )
+            self.mag_data.append( data[Bool, 5] )
+            self.band_data.append( data[Bool, 6] )
+            self.trtype_data.append( data[0, 1])
         self.times = tm
         dt = (tm[1] - tm[0])/8.64e4
         self.n_frames = len(self.times)
@@ -69,13 +80,15 @@ class ColorColor:
         SNIInP = []
         SNIInL = []
         CVdwarf = []
-        for i,ID in enumerate(self.data.TRdata):
+        #print np.array(self.data.TRdata[1]).shape
+        #for i,ID in enumerate(self.data.TRdata):
+        for i,ID in enumerate(self.data.IDs):
             #print i
             #print ID[:,2]	#[i,j]   i=Obs j=0,1,2,3,4: type, time,U,B,V 
             tt = int(ID[0,0])
             tt_index = 0
-            for l,k in enumerate(self.data.trtypes):
-                if k == tt: tt_index = l
+            #for l,k in enumerate(self.data.trtypes):
+            #    if k == tt: tt_index = l
             times  = np.array(ID[:,1])
             BandM0 = np.array(ID[:,2])
             BandM1 = np.array(ID[:,3])
@@ -126,18 +139,16 @@ class ColorColor:
 
 
 
-def ColorColorSky():
+def ColorColorSky(bList, skyfile):
     """
     Make a color-color plot using the data that is generated with the main.py script 
     We take the the first three colors in showbands in params.py
     """
-    skyfile = pm.outfile
-    bList = list(pm.showbands)[:3]
     print "Drawing Color-color plot"
     cc = ColorColor( skyfile, bList, fromfile=False )
     cc.plotCC()
 
-def ColorColorFile( skyfile, bList ):
+def ColorColorFile( bList, skyfile ):
     """
     Make a color-color plot using the data from the 'outfile' in params.py
     We take the the first three colors in showbands in params.py. These have to correspond to
@@ -145,8 +156,4 @@ def ColorColorFile( skyfile, bList ):
     """
     cc = ColorColor( skyfile, bList, fromfile = True )
     cc.plotCC()
-
-
-if __name__ == "__main__": 
-    ColorColorFile(pm.outfile, pm.showbands)
 

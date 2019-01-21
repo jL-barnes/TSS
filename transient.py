@@ -1,9 +1,9 @@
 import numpy as np
 import h5py
 import coordTransforms as cT
-import params as pm
 import MilkyWay as MW
 import cosmology as cm
+import Filterchar as fc
 import glob
 from scipy.interpolate import interp1d
 
@@ -13,18 +13,11 @@ day_to_seconds = 8.64e4
 pc_to_cm = 3.08567758e18
 emptyval = 1000.0
 
-#Flux zero-points in erg cm^-2 s^-1 A^-1
-flux_0 = {'UBVRI': {'U':417.5e-11, 'B':632.0e-11, 'V':363.1e-11, 'R':217.7e-11, 'I':112.6e-11},
-          'sdss':  {'u':847.e-11, 'g':490.e-11, 'r':287.e-11, 'i':195.e-11, 'z':137.e-11},
-          'blackgem': {'u':754.e-11, 'g':472.e-11, 'r':279.e-11, 'i':186.e-11, 'z':130.e-11, 'q':324.e-11},
-          'lsst': {'u':799.e-11, 'g':473.e-11, 'r':284.e-11, 'i':193.e-11, 'z':145.e-11, 'y':115.e-11}
-         }
-#http://www.astronomy.ohio-state.edu/~martini/usefuldata.html
 
 
 class TransientSet:
-    def __init__ (self, obRun):
-        self.grid = obRun.SkyGrid
+    def __init__ (self, obRun, Framenr):
+        self.grid = obRun.SkyGrids[Framenr]
         self.transient_templates = []
         for tr in obRun.transientsList:
             new_template = makeTemplate( tr, obRun )
@@ -61,52 +54,55 @@ class TransientSet:
         self.transient_templates.append( kilonovaTemplate( tMerge, dist, mvRed, mvBlue, obRun ))
             
 def makeTemplate( tag, obRun ):
-    transientsData = getFileLine( pm.transientFile, tag )
-    PD = getFileLine( pm.PeakMagFile, tag )
-    PeakMagData = {'U':PD[0], 'B':PD[1], 'V':PD[2], 'R':PD[3], 'I':PD[4], 
-                   'J':PD[5], 'H':PD[6], 'K':PD[7], 'u':PD[8], 'g':PD[9], 
-                   'r':PD[10], 'i':PD[11], 'z':PD[12], 'std':PD[13]}
+    transientsData = getFileLine( obRun.transientFile, tag )
     Type = int( transientsData[0] )
     if Type == 0 :
-        temp = galactic_nRec_template( tag, transientsData, PeakMagData, obRun )
+        temp = galactic_nRec_template( tag, transientsData, obRun )
     elif Type == 1:
-        temp = galactic_recur_template( tag, transientsData, PeakMagData, obRun )
+        temp = galactic_recur_template( tag, transientsData, obRun )
     elif Type == 2:
-        temp = Mdwarf_template( tag, transientsData, PeakMagData, obRun)
+        temp = Mdwarf_template( tag, transientsData, obRun)
     else:
-        temp = xgal_template( tag, transientsData, PeakMagData, obRun)
+        temp = xgal_template( tag, transientsData, obRun)
     return temp
 
 class transientTemplate:
-    def __init__( self, tag, transientsData, PeakMagData, obRun ):
+    def __init__( self, tag, transientsData, obRun ):
         self.tag         = tag
         self.galType     = int( transientsData[0] )
         self.galkey      = [int(tD) for tD in transientsData[1:5]]
         self.bands       = obRun.bands
-        self.mag_lim     = obRun.mag_lim
-        self.peak_mag    = np.array([ PeakMagData[ band ] for band in self.bands]).astype(float)
-        self.std_mag     = float( PeakMagData['std'] )
+        self.mag_lim     = obRun.threshold
+        #self.peak_mag   = np.array([ PeakMagData[ band ] for band in self.bands]).astype(float)
+        #self.std_mag     = float( PeakMagData['std'] )
         self.LCFile      = 'LightCurveFiles/' + transientsData[5]
         self.broadbands  = {} 
         self.stellarNrm  = float( transientsData[6] )/MW.rho_stellar_sun
         self.scaleH      = float( transientsData[7] )
-        self.deltaT_LC    = float( transientsData[8] )
+        self.deltaT_LC   = float( transientsData[8] )
         self.N_trans     = 0    # how many transients each template has
         self.transients  = []   # list of light curves blueprints here
         self.N_transnonsee = 0  #Nr of generated transients, regardless of visibility
-        self.radec_list  = []
-        self.bandmags_list= []
-        self.bandbands_list=[]
+        self.peak_mag, self.std_mag = PeakMagData( obRun.Peak_mag_f, tag, self.bands )
+                                      #Mean and standard deviation of peak magnitude
+        self.radec_list    = []
+        self.bandmags_list = []
+        self.bandbands_list= []
     def setUpLC( self, colorchoice ):
         print 'for %s' % self.tag
-        if colorchoice not in ['sdss', 'UBVRI', 'blackgem', 'lsst']:
+        if colorchoice not in ['sdss', 'blackgem', 'lsst']:
             print 'Invalid color system.'
             return 0
-        lcdata = h5py.File( self.LCFile + '_%s.hdf5' % colorchoice, 'r' )
-        tms = lcdata['times'][:]
+        lcdata_up = h5py.File( self.LCFile + '_UBVRI.hdf5', 'r' )
+        lcdata_lo = h5py.File( self.LCFile + '_%s.hdf5' % colorchoice, 'r' )
+        tms = lcdata_up['times'][:]    #times(UBVRI) = times(ugriz)
         self.broadbands['t'] = tms;
         for band in self.bands:
             print "%s band" % band
+            if band.islower():
+                lcdata = lcdata_lo
+            else:
+                lcdata = lcdata_up
             if not band in lcdata.keys():
                 print "no data for %s band" % band
                 bb = emptyval * np.ones( len(tms) )
@@ -116,6 +112,8 @@ class transientTemplate:
             def fun( times, fcn = ff ):
                 return fcn(times)
             self.broadbands[band] = fun
+        lcdata_lo.close()
+        lcdata_up.close()
         lcdata.close()
     def get_all_bbs( self, tsample, obbands ):
         bnds = []
@@ -131,10 +129,10 @@ class transientTemplate:
                                            piecewise=True, Hthin = self.scaleH )
             N_per_y = self.stellarNrm * cell.vol * np.sum( np.array(this_rho)[ np.where( self.galkey )] )
         N_per_y = N_per_y * Nr_of_years
-        if N_per_y > 2.0:
-            NTr = int( N_per_y )
-        else: NTr = geometricP( N_per_y )
-        return NTr   
+        #if N_per_y > 2.0:
+        #    NTr = int( N_per_y )
+        #else: NTr = geometricP( N_per_y )
+        return geometricP( N_per_y )   
     def get_blueprints( self, c, dtObs ):
         Nr_of_years = (self.deltaT_LC + dtObs) / 365.25   #At first observation the first LC
                                                           #should have just ended
@@ -144,7 +142,7 @@ class transientTemplate:
             tOutburst = -365.25 * Nr_of_years * np.random.random()
             if tOutburst + self.deltaT_LC + dtObs > 0.0:
                 magDelta = np.random.normal( scale = self.std_mag )
-                peak_M = self.peak_mag + magDelta
+                peak_M = {band: self.peak_mag[band] + magDelta for band in self.bands}
                 newLC = LC_blueprint( c.sampleCoords(), peak_M, magDelta, tOutburst )
                 if self.canSee_LC( newLC ):
                     coords = (newLC.LC_RA, newLC.LC_DEC, newLC.LC_Dist)
@@ -172,10 +170,22 @@ class transientTemplate:
             else:
                 self.N_trans -=1
         self.bandmags_list = np.array(self.bandmags_list)
-    def take_data(self):
+    def take_data(self, colorchoice, convert_toAB, convert_toVega):
         """
-        Return the observational data to observ.py
+        Converts Vega magnitudes to AB magnitudes or vice versa if needed
+        Returns the observational data to observ.py
         """
+        AB_to_Vega = fc.AB_to_Vega[colorchoice]
+        Vega_to_AB = fc.Vega_to_AB['UBVRI']
+        bands = self.bandbands_list[0]
+        if np.any(convert_toAB):
+            C = [convert_toAB[i] * Vega_to_AB[b] for i,b in enumerate(bands)]
+        elif np.any(convert_toVega):
+            C = [convert_toVega[i] * AB_to_Vega[b] for i,b in enumerate(bands)]
+        else:
+            C = np.zeros(len(bands))
+        Conv = np.tile(C, (len(self.bandmags_list),1))
+        self.bandmags_list += Conv
         return self.radec_list, self.bandmags_list, self.bandbands_list
     def canSee_LC(self, lightcurve):
         """
@@ -186,28 +196,28 @@ class transientTemplate:
         seen = False
         d_10pc = 0.01
         dist_ratio = lightcurve.LC_Dist/d_10pc
-        apparent_mag = lightcurve.PeakMag + 5.0 * np.log10( dist_ratio )
+        apparent_mag = {band: lightcurve.PeakMag[band]
+                        + 5.0 * np.log10( dist_ratio ) for band in self.bands}
         if lightcurve.Extinction == 0:
-            for band, x in enumerate(self.mag_lim):
-                if apparent_mag[ band ] < x: 
+            for band in self.bands:
+                if apparent_mag[band] < self.mag_lim[band]: 
                     seen = True
                     return seen
         else:
-            for band, x in enumerate(self.mag_lim):
-                color = self.bands[band]
-                if apparent_mag[ band ] + lightcurve.Extinction[color] < x: 
+            for band in self.bands:
+                if apparent_mag[band] + lightcurve.Extinction[band] < self.mag_lim[band]: 
                     seen = True
                     return seen
         return seen
 
 class galactic_nRec_template( transientTemplate ):
-    def __init__( self, tag, trData, PkMData, obRun ):
-        transientTemplate.__init__( self, tag, trData, PkMData, obRun  )
+    def __init__( self, tag, trData, obRun ):
+        transientTemplate.__init__( self, tag, trData, obRun  )
         self.Max_obs_D     =  Maximum_observing_distance(self.mag_lim, self.peak_mag, self.std_mag)
 
 class galactic_recur_template( transientTemplate ):
-    def __init__( self, tag, trData, PkMData, obRun ):
-        transientTemplate.__init__( self, tag, trData, PkMData, obRun)
+    def __init__( self, tag, trData, obRun ):
+        transientTemplate.__init__( self, tag, trData, obRun)
         self.freqDay = float( trData[9] )
         self.freqDev = float( trData[10] )
         self.Max_obs_D     =  Maximum_observing_distance(self.mag_lim, self.peak_mag, self.std_mag)
@@ -219,7 +229,7 @@ class galactic_recur_template( transientTemplate ):
         for i in range( N_transients ):
             tOutburst = -365.25 * Nr_of_years * np.random.random()
             magDelta = self.std_mag * 3.0
-            peak_M = self.peak_mag + magDelta
+            peak_M = {band: self.peak_mag[band] + magDelta for band in self.bands}
             newLC = LC_blueprint( c.sampleCoords(), peak_M, magDelta, tOutburst )
             if self.canSee_LC( newLC):
                 coords = (newLC.LC_RA, newLC.LC_DEC, newLC.LC_Dist)
@@ -287,9 +297,9 @@ class galactic_recur_template( transientTemplate ):
             return [],[]
 
 class Mdwarf_template( transientTemplate ):
-    def __init__( self, tag, trData, PkMData, obRun ):
-        transientTemplate.__init__( self, tag, trData, PkMData, obRun )
-        vals               = np.genfromtxt( pm.MDwarfFile, names=True ).T[tag]
+    def __init__( self, tag, trData, obRun ):
+        transientTemplate.__init__( self, tag, trData, obRun )
+        vals               = np.genfromtxt( obRun.MDwarfFile, names=True ).T[tag]
         self.aval, self.bval, self.alf_ac, self.alf_in,\
             self.bet_ac, self.bet_in, self.da_dz = vals[0:7]
         self.Ebins         = 100		#results in 100 bins
@@ -325,16 +335,22 @@ class Mdwarf_template( transientTemplate ):
                     self.N_trans += 1
     def setUpLC( self, colorchoice ):
         print 'for %s' % self.tag
-        self.flux_0 = flux_0[colorchoice]
+        self.flux_0 = fc.flux_0[colorchoice]
+        self.flux_0.update(fc.flux_0['UBVRI'])
         Peak1, Peak2 = (0,0)
         self.LC_time = {}
         for TYPE in ['rise', 'decay']:
-            lcdata = h5py.File( self.LCFile + '_%s_%s.hdf5' % (colorchoice, TYPE), 'r' )
-            tms = lcdata['times'][:]
+            lcdata_lo = h5py.File( self.LCFile + '_%s_%s.hdf5' % (colorchoice, TYPE), 'r' )
+            #lcdata_up= h5py.File( self.LCFile + '_UBVRI_%s.hdf5' % (TYPE), 'r' )
+            tms = lcdata_lo['times'][:]
             if TYPE == 'rise':self.broadbands_rise['t'] = tms;
             else: self.broadbands_decay['t'] = tms
             for band in self.bands:
                 print "%s band" % band
+                if band.islower():
+                    lcdata = lcdata_lo
+                else:
+                    lcdata = lcdata_up                
                 if not band in lcdata.keys():
                     print "no data for %s band" % band
                     bb = np.zeros( len(tms) )
@@ -401,7 +417,7 @@ class Mdwarf_template( transientTemplate ):
                     #the luminosity (in mags) of the quiescent star
                     mag_non_outb = -2.5 * np.log10( self.Lq[bnd]/area/self.flux_0[ bnd ] )
                     maglist[j] += mdwarf.Extinction[ bnd ]
-                    if mag < threshold[bnd] and mag < mag_non_outb - pm.mag_resolution:
+                    if mag < threshold[bnd] and mag < mag_non_outb - obRun.mag_resolution:
                         visible = True
                 if visible:
                     """
@@ -467,12 +483,13 @@ class Mdwarf_template( transientTemplate ):
                 
 
 class xgal_template( transientTemplate  ):
-    def __init__( self, tag, trData, PkMData, obRun ):
-        transientTemplate.__init__( self, tag, trData, PkMData, obRun )
+    def __init__( self, tag, trData, obRun ):
+        transientTemplate.__init__( self, tag, trData, obRun )
         #self.stellarNrm = 2.47e-14	#for snIa
         self.NM = float(trData[6])
         self.alpha = float(trData[12])
         self.Kcormodel = trData[5]
+        self.Kcorfuns = cm.Kcor(self.Kcormodel, obRun.colorScheme, self.bands)
         #The following are only applicable to SNIa
         self.scale = 1		
         self.scale_0 = 1.09
@@ -507,7 +524,7 @@ class xgal_template( transientTemplate  ):
             tOutburst = -365.25 * Nr_of_years * np.random.random() 
             if tOutburst + self.deltaT_LC + dtObs > 0.0:
                 magDelta = np.random.normal( scale = self.std_mag )
-                peak_M = self.peak_mag + magDelta
+                peak_M = {band: self.peak_mag[band] + magDelta for band in self.bands}
                 newLC = LC_blueprint( c.sampleCoords(), peak_M, magDelta, tOutburst )
                 if self.canSee_LC( newLC ):
                     coords = (newLC.LC_RA, newLC.LC_DEC)
@@ -519,7 +536,6 @@ class xgal_template( transientTemplate  ):
     def sample_all_LCs( self, obTimes, obBands, threshold ):
         obT_f = obTimes[-1]
         dts = obT_f - obTimes
-        self.Kcorfuns = cm.Kcor(self.Kcormodel, obBands)
         for lc in self.transients: 
             visible = False
             tSamp = -lc.tExplode * 8.64e4 - dts
@@ -539,23 +555,39 @@ class xgal_template( transientTemplate  ):
 
             if visible: 
                 self.radec_list.append( [ lc.LC_RA, lc.LC_DEC ] )
+                print type(self.bandmags_list)
                 self.bandmags_list.append( bandMags )
                 self.bandbands_list.append( obBands )
             else:
                 self.N_trans -=1
         self.bandmags_list = np.array(self.bandmags_list)
+    def temp(self, tsample , obbands, redshift):
+        self.done = False
+        if not self.done:
+            import matplotlib.pyplot as plt
+            Csharp = {'u': '#610061', 'g': '#0028ff', 'r': '#ff0000', 'i': '#c20000'}
+            tSample = np.linspace(tsample[0], tsample[0]+86400*200, 100)
+            bnds = []
+            for i, bandLabel in enumerate(obbands):
+                #Kcor = self.Kcorfuns.Sample_Kcor(bandLabel, tsample[i] * self.scale,  
+                #                                 redshift)
+                this_bb = self.broadbands[bandLabel]( tSample[i])
+                bnds.append(float(this_bb))
+                plt.plot(tSample, this_bb, color=Csharp[bandLabel])
+            self.done = True
 
 
 class kilonovaTemplate( transientTemplate ):
     def __init__(self, tMerge, dist, mvRed, mvBlue, obRun):
+        grid           = obRun.SkyGrid
         self.tag        = 'kilonova'
         self.bands      = obRun.bands
         self.t_merge    = tMerge
         if dist != None:
             self.dist = dist
-        else: self.dist = sampleLIGODistance( pm.maxLIGODist)
-        self.RA         = sampleRA( pm.RA_lo, pm.RA_hi )
-        self.DEC        = sampleDEC( pm.DEC_lo, pm.DEC_hi )
+        else: self.dist = sampleLIGODistance( obRun.maxLIGODist)
+        self.RA         = sampleRA( grid.RA_lo, grid.RA_hi )
+        self.DEC        = sampleDEC( grid.DEC_lo, grid.DEC_hi )
         self.N_trans    = 1
         self.N_transnonsee = 1
         self.mvRed      = mvRed
@@ -634,6 +666,8 @@ class LC_blueprint:
 
 
 def Maximum_observing_distance(mag_lim, pkmag, devmag):
+    pkmag = np.array([ pkmag[ band ] for band in pkmag.keys()]).astype(float)
+    mag_lim = np.array([ mag_lim[ band ] for band in pkmag.keys()]).astype(float)
     exp_term = 0.2*( max( mag_lim - ( pkmag - 3.0*devmag ) ) ) + 1.0
     Max_D = np.power( 10.0, exp_term ) # parsecs
     return Max_D
@@ -660,7 +694,8 @@ def Minimum_Flare_E(D, Lq,  obRun):
     #Quiescent fluxes
     Qflux = { band : Lq[band] / Area for band in colorbands}
     #Quiescent magnitudes
-    f_0 = flux_0[obRun.colorScheme]
+    f_0 = fc.flux_0[obRun.colorScheme]
+    f_0.update(fc.flux_0['UBVRI'])
     Qmag = { band : flux2mag(Qflux[band], f_0[band]) for band in colorbands}
 
     #The difference between the magnitude limit and quiescent magnitude of the M dwarf
@@ -669,7 +704,7 @@ def Minimum_Flare_E(D, Lq,  obRun):
     if mindifmag < 0:	#The M dwarf is visible in quiescence
         logminE = 28
         #####################################
-        #Here a function should come to investigate the minimum flare required for an M dwarf that is visible. I.e. work with the sensitivity of the telescope: pm.mag_resolution
+        #Here a function should come to investigate the minimum flare required for an M dwarf that is visible. I.e. work with the sensitivity of the telescope: obRun.mag_resolution
         ######################33
     else:		#The M dwarf is not visible in quiescence
         #Now calculate how large a flare would be in the U-band to increase 
@@ -702,26 +737,29 @@ def flux2mag(flux,f_0):
 def geometricP( nt ):
     """
     Use Poisson statistics to obtain a number of transients inside a cell
-     if the average is 2. Because we're using Poisson statistics, there is
-     a non-zero probability that the number of transients is higher than 2.
+    There is a non-zero probability that the number of transients is higher than nt.
     nt: the average number of transients in this cell (float)
     returns: the actual number of transients in this cell (int)
     """
     return np.random.poisson(nt)
-    """
-    Nt = 0
-    if nt > 1.0:
-        p = 0.5*nt
-        z1 = np.random.geometric( p, size=2 )
-        if   (z1 == 1).sum() == 2: Nt = 2
-        elif (z1 == 1).sum() == 1: Nt = 1
-    else:
-        z1 = np.random.geometric( nt, size = 1 )
-        if z1 == 1: Nt = 1
-    return Nt 
-    """
 
-
+def PeakMagData( File, Tag, bands ):
+    """
+    Extracts the mean (+std) peak magnitudes for a transient from
+     the file.
+    File: The file with peak magnitudes
+    Tag: The name of the transient
+    bands: the color bands in use 
+    returns: the peak magnitudes in the color bands in use + the standard deviation
+    """
+    transientsData = getFileLine( File, Tag )
+    PD = getFileLine( File, Tag )
+    PeakMagData = {'U':PD[0],  'B':PD[1],  'V':PD[2],  'R':PD[3],  'I':PD[4], 
+                   'J':PD[5],  'H':PD[6],  'K':PD[7],  'u':PD[8],  'g':PD[9], 
+                   'r':PD[10], 'i':PD[11], 'z':PD[12], 'y':PD[13], 'q':PD[14], 
+                   'std':PD[15]}
+    PMData = {band: float(PeakMagData[band]) for band in bands}
+    return PMData, float(PeakMagData['std'])
 
 def getFileLine( file, tag ):
     f = open( file, 'r' )
