@@ -4,30 +4,6 @@ A parameter file for the Transient Sky Simulator
 
 # Parameters for the observation
 
-# size of the window (in JD2000)
-RA_lo  = "14:00:00" 
-RA_hi  = "14:30:00"
-DEC_lo = "20:00:00"
-DEC_hi = "25:00:00"
-"""
-
-RA_lo  = "14:10:00" 
-RA_hi  = "14:30:00"
-DEC_lo = "20:00:00"
-DEC_hi = "25:00:00"
-
-RA_lo  = "17:43:40" 
-RA_hi  = "17:47:40"
-DEC_lo = "-27:00:28"
-DEC_hi = "-31:00:28"
-
-RA_lo  = "17:43:40" 
-RA_hi  = "17:47:40"
-DEC_lo = "-37:00:28"
-DEC_hi = "-41:00:28"
-"""
-
-
 nCells_D = 1000          # number of cells in the distance direction (galactic)
 nCells_xgal = int(1e4)   # number of cells in the distance directions (extragalactic)
 
@@ -44,8 +20,8 @@ color_system:   The color system corresponding to ugriz(y)(q)
                 The UBVRI color scheme is always loaded
 """
 
-#mag_limit      = {'U':21.0, 'B':21.0, 'V':21.0, 'R':21.0, 'I':21.0, 'u':20.9, 'g':22.9, 'r':22.3, 'i':21.7, 'z':21.4} 
-mag_limit      = {'U':21.0, 'B':21.0, 'V':21.0, 'R':21.0, 'I':21.0, 'u':19.9, 'g':20.9, 'r':20.3, 'i':20.7, 'z':20.4} 
+mag_limit      = {'U':21.0, 'B':21.0, 'V':21.0, 'R':21.0, 'I':21.0, 'u':20.9, 'g':22.9, 'r':22.3, 'i':21.7, 'z':21.4, 'q': 23.2, 'y':21.0} 
+#mag_limit      = {'U':21.0, 'B':21.0, 'V':21.0, 'R':21.0, 'I':21.0, 'u':18.9, 'g':19.9, 'r':19.3, 'i':19.7, 'z':19.4} 
 mag_resolution = 0.1	
 aperture_DEC   = 1.64317
 aperture_RA    = 1.64317
@@ -58,17 +34,17 @@ color_system   = 'blackgem'
 use_nova     = 0
 use_CVdwarf  = 0
 use_AMCVn    = 0
-use_SNIa     = 1
-use_SNIb     = 1
+use_SNIa     = 0
+use_SNIb     = 0
 use_SNIc     = 1
-use_SNIIL    = 0
 use_SNIIP    = 0
+use_SNIIL    = 0
 use_SNIInL   = 0
 use_SNIInP   = 0
 use_M3       = 0
 use_M3_5     = 0
 use_M4       = 0
-use_kilonova = 0	 #Should have no entry in dataTransients.dat or peakmagsTransients.dat
+use_kilonova = 1	 #Should have no entry in dataTransients.dat or peakmagsTransients.dat
 
 """
 Other transients that you have added yourself can be put in this array.
@@ -102,4 +78,4 @@ MDwarfFile = 'data_MDwarfs.dat'
 Animation_loc = 'Animation.mp4'
 
 #Output file
-outfile = 'lsst.dat'
+outfile = 'long.dat'

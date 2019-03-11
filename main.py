@@ -1,5 +1,6 @@
 import time
 import observ as ob
+import numpy as np
 import argparse
 import transient as trns
 from colorcolor import ColorColorSky
@@ -35,9 +36,10 @@ def main(Opts):
         Set_of_transients.append(transientZoo)
 
     if pm['use_kilonova']:
-        Set_of_transients[0].inject_kilonova( pm['k_tMerge'], pm['k_dist'],\
-                                              pm['k_mvRed'], pm['k_mvBlue'],\
-                                              observingRun )
+        SKN = np.random.randint(0,len(Set_of_transients))
+        Set_of_transients[SKN].inject_kilonova( pm['k_tMerge'], pm['k_dist'],\
+                                                pm['k_mvRed'], pm['k_mvBlue'],\
+                                                observingRun, SKN )
         print "Injecting a kilonova"
     tuc = time.time()
 
@@ -45,20 +47,38 @@ def main(Opts):
     # Make observations
     ###################################
     TotalData = []
+    TrTypes   = []
+    TrTypenrs = []
+    No_of_trs = 0
     for T_zoo in Set_of_transients:
-        Data, TrTypes = observingRun.take_data( T_zoo, pm['outfile'] )
+        Data, TrTs, TrTnrs, NrTrs = observingRun.take_data( T_zoo, pm['outfile'], TrTypes, TrTypenrs, No_of_trs )
+        #print Data
         TotalData.append(Data)
+        TrTypes = TrTs
+        TrTypenrs = TrTnrs
+        No_of_trs = NrTrs
+    #print TotalData
     print TrTypes, "trtypes"
     tec = time.time()
     print "Time for observations", tec - tuc
 
     TotN_trans = 0
-    writefile = observingRun.OpenFile(pm['outfile'], TrTypes)
+    writefile = observingRun.OpenFile(pm['outfile'], TrTypes, observingRun.Trlegend)
     for i,T_zoo in enumerate(Set_of_transients):
         observingRun.WriteToFile(writefile, TotalData[i])
-        for temp in transientZoo.transient_templates:
-            print temp.tag, temp.N_trans, temp.N_transnonsee
-            TotN_trans += temp.N_trans
+        #for temp in transientZoo.transient_templates:
+        #    print temp.tag, temp.N_trans, temp.N_transnonsee
+        #    TotN_trans += temp.N_trans
+    for tag in TrTypes:
+        N_tr_seen = 0
+        N_tr_not_seen = 0
+        for T_zoo in Set_of_transients:
+            for templ in T_zoo.transient_templates:
+                if templ.tag == tag:
+                    N_tr_seen += templ.N_trans    
+                    N_tr_not_seen += templ.N_transnonsee -templ.N_trans
+        print tag, "Seen: ", N_tr_seen, " Not seen: ", N_tr_not_seen
+        TotN_trans += N_tr_seen
 
     ###################################
     # Do the animation
@@ -105,19 +125,6 @@ def printOpts(Opts):
         print "[-d] [--nodust]  ", Opts.nodust
     if Opts.colorsys:
         print "[-c] [--colorsys]", Opts.colorsys
-
-
-"""
-def CreateNewParams(Paramfile):
-    if Paramfile != 'params.py':
-        i = 0
-        while os.path.exists('params_old%d.py' % (i)):
-            i+=1
-        print "Copying params.py into params_old%d.py" % (i)
-        shutil.copy('params.py', 'params_old%d.py' % (i))
-        print "Copying " + Paramfile + " into params.py"
-        shutil.copy(Paramfile, 'params.py')
-"""
 
 if __name__ == "__main__": 
     """

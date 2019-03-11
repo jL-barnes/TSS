@@ -98,7 +98,7 @@ class Green_Extinction:
             for j in range( len(ra) ):
                 Onecoord = [0]			#The EBV at d=0 at one coordinate
                 Onecoord.extend(DQ[i+j])	#extend with EBV at other ds
-                EBV[j,i,:] = self.conv * Onecoord
+                EBV[j,i,:] = self.conv * np.array(Onecoord)
 
         self.queried = True
         

@@ -278,7 +278,7 @@ class grid:
                 if dust.InSchultheisBoundary(*coordboundaries):
                     self.Gal_dust = dust.Schultheis_Extinction(self.Xtr_dust, self.bands, self.obRun.colorScheme, *coordboundaries)
                 elif dust.InGreenBoundary(*coordboundaries):
-                    self.Gal_dust = dust.Green_Extinction(self.Xtr_dust, self.bands, offline, self.obRun.colorScheme, *coordboundaries)
+                    self.Gal_dust = dust.Green_Extinction(self.Xtr_dust, self.bands, self.obRun.colorScheme, offline, *coordboundaries)
                 else:
                     self.Gal_dust = self.Xtr_dust
         else:
@@ -318,10 +318,26 @@ class timeFrame:
             Frames[i] = np.argwhere(Fcoords == Coord).ravel()[0]
         return Frames
     def get_Dates( self ):
+        """
+        Return an array of the observation dates for each frame
+        """
         #return np.linspace( self.t_start, self.t_end, self.n_steps )
-        return np.array(self.JD) - self.t_start
+        obTimes = np.array(self.JD) - self.t_start
+        Dates = []
+        for frame in self.Framenrs:
+            Dates.append(obTimes[self.Frames == frame])
+        return Dates
+        #return np.array(self.JD) - self.t_start
     def get_ObBands( self ):
-        return self.Band
+        """
+        Return an array of the observation bands for each frame
+        """
+        Bands = []
+        _Band = np.array(self.Band)
+        for frame in self.Framenrs:
+            Bands.append(_Band[self.Frames == frame])
+        return Bands
+        #return self.Band
     def get_Bands( self ):
         return np.unique(self.Band)
     def get_relative_times( self ):
@@ -416,13 +432,24 @@ class observation:
         if self.pm['use_M4']:       self.transientsList.append( 'M4' )
         for transient in self.pm['Extra_transients']:
             self.transientsList.append( transient )
-    def take_data( self, transientDataSet, outFile ):
+        self.Trlegend = {}
+        for i,transient in enumerate(self.transientsList):
+            self.Trlegend[transient] = i
+    def take_data( self, transientDataSet, outFile, TrTypes, TrTypenrs, nrTrs ):
+        """
+        nrTrs:  The number of transients that have already been saved
+        """
         #tEnd = self.obTimes[-1]/8.64e4
-        nTimeSteps = len( self.obTimes )
+        framenr = transientDataSet.Framenr
+        #nTimeSteps = len( self.obTimes )
+        nTimeSteps = len( self.obTimes[framenr])
         below_threshold = np.max(self.mag_lim) + 0.5 * self.mag_resolution
-        self.convert_toAB   = np.zeros(len(self.obBands), dtype=bool)
-        self.convert_toVega = np.zeros(len(self.obBands), dtype=bool)
-        for i,band in enumerate(self.obBands):
+        self.convert_toAB   = np.zeros(nTimeSteps, dtype=bool)
+        self.convert_toVega = np.zeros(nTimeSteps, dtype=bool)
+        #self.convert_toAB   = np.zeros(len(self.obBands), dtype=bool)
+        #self.convert_toVega = np.zeros(len(self.obBands), dtype=bool)
+        #for i,band in enumerate(self.obBands):
+        for i,band in enumerate(self.obBands[framenr]):
             if self.Opts.colorsys == 'AB':
                 if band.isupper():
                     self.convert_toAB[i] = True
@@ -467,37 +494,53 @@ class observation:
         nTr_tot = 0
         for trTemp in transientDataSet.transient_templates:
             if trTemp.N_trans > 0:
-                trTemp.sample_all_LCs( self.obTimes, self.obBands, self.threshold )
+                trTemp.sample_all_LCs( self.obTimes[framenr],
+                                      self.obBands[framenr], self.threshold )
             nTr_tot += trTemp.N_trans
-            print "Nrtrans", trTemp.N_trans
+            print "Nrtrans", trTemp.tag, trTemp.N_trans
 
         # an array for all the magnitude data
+        #mags = np.zeros( [nrTrs + nTr_tot, nTimeSteps]  )
+        #radec_coords = np.zeros( [nrTrs + nTr_tot,2] )
         mags = np.zeros( [nTr_tot, nTimeSteps]  )
         radec_coords = np.zeros( [nTr_tot,2] )
         # loop over all transients
+        #i = nrTrs
         i = 0
         it = 0
+        imax = 0
         trIds = []
-        trTypes = []
         types = []
         for trTemp in transientDataSet.transient_templates:
             if trTemp.N_trans > 0:
-                trTypes +=  [it, trTemp.tag]
+                
+                if trTemp.tag not in TrTypes:
+                    TrTypes.append(trTemp.tag)
+                    """
+                    if TrTypenrs == []:
+                        it = 0
+                    else:
+                        it = max(TrTypenrs) + 1
+                    TrTypenrs.append(it)
+                    """
+                
+                it = self.Trlegend[trTemp.tag]
                 radec, bandSets, Passbands = trTemp.take_data(self.colorScheme,
                                         self.convert_toAB, self.convert_toVega)
                 imax = i + len( radec )
-                trIds += range(i, imax)
+                #trIds += range(i, imax)
+                trIds += range(nrTrs + i, nrTrs + imax)
                 radec_coords[i:imax] = radec
                 #Nrbands = len(bandSets[0])
                 for x,b in enumerate(bandSets):
                     maglimarray = np.array([self.threshold[band] for band in Passbands[x]])
                     b[ b > maglimarray] = below_threshold 
                 mags[ i:imax,:] = np.array( [np.array(bS).T for bS in bandSets] )
-                types.extend([it for i in range(i, imax)])
+                types.extend([it for z in range(i, imax)])
                 i = imax
                 it += 1
         if i == 0: 	#No transients at all found
-            return [], []
+            return [], TrTypes, TrTypenrs, nrTrs
         """
         j=0
         for i,trTemp in enumerate(transientDataSet.transient_templates):
@@ -505,7 +548,8 @@ class observation:
                 Bandsets = mags[ j : j + trTemp.N_trans]
                 j = trTemp.N_trans
         """
-        nTr_tot = imax  
+        #nTr_tot = imax  
+        nTr_tot = nrTrs + imax
         """
         # set up output file
         f = open( outFile, 'wb' )
@@ -517,18 +561,27 @@ class observation:
         """
         # write out data
         allData = []
-        print np.shape(Passbands) 
-        print nTimeSteps, nTr_tot
         for i in range( nTimeSteps ):
-            for j in range( nTr_tot ):
-                radec = radec_coords[j]
-                bandDat = mags[j,i]
-                passband = Passbands[j][i]
-                Onerow = [trIds[j], types[j]] +  [self.obTimes[i]] + radec.tolist() + [bandDat] + [passband]
+            #print "hello", nTimeSteps
+            for j in range( nTr_tot - nrTrs ):
+                #radec = radec_coords[j]
+                #bandDat = mags[j,i]
+                #print mags[j,i], j, i
+                bandDat = '{0:0.3f}'.format(mags[j,i])
+                #TimeDat = '{0:0.2f}'.format(self.obTimes[i])
+                TimeDat = '{0:0.2f}'.format(self.obTimes[framenr][i])
+                RADEC = radec_coords[j].tolist()
+                RADat = '{0:0.4f}'.format(RADEC[0])
+                DECDat = '{0:0.4f}'.format(RADEC[1])
+                #passband = Passbands[j][i]
+                #Onerow = [trIds[j], types[j]] +  [self.obTimes[i]] + radec.tolist() + [bandDat] + [passband]
+                #Onerow = [trIds[j], types[j]] +  [self.obTimes[i]] + radec.tolist() + [bandDat] + [self.obBands[i]]
+                Onerow = [trIds[j], types[j]] +  [TimeDat] + [RADat] + [DECDat] + [bandDat] + [self.obBands[framenr][i]]
+                #print Onerow
                 allData.append(Onerow)
                 #cwr.writerow( allDat )
         #f.close()
-        return allData, trTypes
+        return allData,  TrTypes, TrTypenrs, nTr_tot
     """
     def writetofile(self, trTemp, bandSets):
         f = open( 'lc_data_test%s.dat' % trTemp.tag, 'wb' )
@@ -540,20 +593,25 @@ class observation:
                 clc.writerow(data)
         f.close()
     """
-    def OpenFile(self, outFile, trTypes):
+    def OpenFile(self, outFile, trTypes, trLegend):
         #set up output file
         f = open( outFile, 'wb' )
+        lineTR = []
+        for i,Tr in enumerate(trTypes):
+            #lineTR.append(i)
+            lineTR.append(trLegend[Tr])
+            lineTR.append(Tr)
         # set up csv
         cwr = csv.writer( f, delimiter = '\t' )
-        cwr.writerow( trTypes)# + [1, 'thing_1', 2, 'alien_flashlights'] )
+        cwr.writerow( lineTR)# + [1, 'thing_1', 2, 'alien_flashlights'] )
         hdrs = ['iD','type','time', 'RA', 'DEC', 'band']
         cwr.writerow(hdrs)
         return cwr
-    
+
     def WriteToFile(self, cwr, Data):
         for row in Data:
             cwr.writerow(row)
-        
+
 
 def getFileLine( file, tag ):
     f = open( file, 'r' )

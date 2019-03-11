@@ -17,7 +17,8 @@ emptyval = 1000.0
 
 class TransientSet:
     def __init__ (self, obRun, Framenr):
-        self.grid = obRun.SkyGrids[Framenr]
+        self.Framenr = Framenr
+        self.grid = obRun.SkyGrids[self.Framenr]
         self.transient_templates = []
         for tr in obRun.transientsList:
             new_template = makeTemplate( tr, obRun )
@@ -50,8 +51,15 @@ class TransientSet:
             self.grid.Cosmo.create_Nr_density_funct(xtr.NM, xtr.alpha) 
             for c in cells_xgal:
                 xtr.get_blueprints( c, self.deltaT_obs )
-    def inject_kilonova( self, tMerge, dist, mvRed, mvBlue, obRun ):
-        self.transient_templates.append( kilonovaTemplate( tMerge, dist, mvRed, mvBlue, obRun ))
+    def inject_kilonova( self, tMerge, dist, mvRed, mvBlue, obRun, Framenr ):
+        self.transient_templates.append( kilonovaTemplate( tMerge, dist, mvRed, mvBlue, obRun, Framenr ))
+        print "translegend", obRun.Trlegend
+        if obRun.Trlegend == {}:
+            obRun.Trlegend['kilonova'] = 0
+        else:
+            max_val = max(obRun.Trlegend, key=obRun.Trlegend.get)
+            print max_val
+            obRun.Trlegend['kilonova'] = obRun.Trlegend[max_val] + 1
             
 def makeTemplate( tag, obRun ):
     transientsData = getFileLine( obRun.transientFile, tag )
@@ -114,7 +122,7 @@ class transientTemplate:
             self.broadbands[band] = fun
         lcdata_lo.close()
         lcdata_up.close()
-        lcdata.close()
+        #lcdata.close()
     def get_all_bbs( self, tsample, obbands ):
         bnds = []
         for i,bandLabel in enumerate(obbands):
@@ -299,7 +307,7 @@ class galactic_recur_template( transientTemplate ):
 class Mdwarf_template( transientTemplate ):
     def __init__( self, tag, trData, obRun ):
         transientTemplate.__init__( self, tag, trData, obRun )
-        vals               = np.genfromtxt( obRun.MDwarfFile, names=True ).T[tag]
+        vals               = np.genfromtxt( obRun.MdwarfFile, names=True ).T[tag]
         self.aval, self.bval, self.alf_ac, self.alf_in,\
             self.bet_ac, self.bet_in, self.da_dz = vals[0:7]
         self.Ebins         = 100		#results in 100 bins
@@ -316,6 +324,7 @@ class Mdwarf_template( transientTemplate ):
         self.Lq            = {'U':qs[0],'B':qs[1],'V':qs[2],'R':qs[3],'I':qs[4],'J':qs[5],'H':qs[6],'K':qs[7],'u':qs[8],'g':qs[9],'r':qs[10],'i':qs[11],'z':qs[12]}
         self.Flare_energy  = float( trData[11] )
         self.Epk           = {}
+        self.mag_resolution= obRun.mag_resolution
         self.Max_obs_D     =  Maximum_observing_distance(self.mag_lim, self.peak_mag, self.std_mag)
         self.broadbands_rise  = {}
         self.broadbands_decay = {}
@@ -415,9 +424,13 @@ class Mdwarf_template( transientTemplate ):
                     mag = -2.5 * np.log10( lum/area/self.flux_0[ bnd ] )
                     maglist[j] = mag
                     #the luminosity (in mags) of the quiescent star
-                    mag_non_outb = -2.5 * np.log10( self.Lq[bnd]/area/self.flux_0[ bnd ] )
+                    if bnd in self.Lq.keys():
+                        mag_non_outb = -2.5 * np.log10( self.Lq[bnd]/area/self.flux_0[ bnd ] )
+                    else:
+                        #The quiescent luminosity for band ", bnd, " is not included in the file with M dwarf data
+                        mag_non_outb = 0
                     maglist[j] += mdwarf.Extinction[ bnd ]
-                    if mag < threshold[bnd] and mag < mag_non_outb - obRun.mag_resolution:
+                    if mag < threshold[bnd] and mag < mag_non_outb - self.mag_resolution:
                         visible = True
                 if visible:
                     """
@@ -478,7 +491,8 @@ class Mdwarf_template( transientTemplate ):
                                       self.broadbands_decay[bnd]( tSamp_decay )
                     lumlist += new_flux_rise + new_flux_decay
         for i,bnd in enumerate(obbands):
-            lumlist[i] += self.Lq[ bnd ]
+            if bnd in self.Lq.keys():
+                lumlist[i] += self.Lq[ bnd ]
         return lumlist
                 
 
@@ -555,7 +569,6 @@ class xgal_template( transientTemplate  ):
 
             if visible: 
                 self.radec_list.append( [ lc.LC_RA, lc.LC_DEC ] )
-                print type(self.bandmags_list)
                 self.bandmags_list.append( bandMags )
                 self.bandbands_list.append( obBands )
             else:
@@ -578,49 +591,58 @@ class xgal_template( transientTemplate  ):
 
 
 class kilonovaTemplate( transientTemplate ):
-    def __init__(self, tMerge, dist, mvRed, mvBlue, obRun):
-        grid           = obRun.SkyGrid
+    def __init__(self, tMerge, dist, mvRed, mvBlue, obRun, Framenr):
+        grid            = obRun.SkyGrids[Framenr]
         self.tag        = 'kilonova'
         self.bands      = obRun.bands
         self.t_merge    = tMerge
         if dist != None:
             self.dist = dist
         else: self.dist = sampleLIGODistance( obRun.maxLIGODist)
-        self.RA         = sampleRA( grid.RA_lo, grid.RA_hi )
         self.DEC        = sampleDEC( grid.DEC_lo, grid.DEC_hi )
+        RA_lo           = grid.RA_c - (0.5 * obRun.aperture_RA /
+                            np.cos(self.DEC * (np.pi/180.)) )
+        RA_hi           = grid.RA_c - (0.5 * obRun.aperture_RA /
+                            np.cos(self.DEC * (np.pi/180.)) )
+        self.RA         = sampleRA( RA_lo, RA_hi )
         self.N_trans    = 1
         self.N_transnonsee = 1
         self.mvRed      = mvRed
         self.mvBlue     = mvBlue
         self.f_band     = {}
         self.netLC      = {}
-        self.bandmags_list = np.ones(len(obRun.obBands)) * emptyval
+        #self.bandmags_list = np.ones(len(obRun.obBands)) * emptyval
+        self.bandmags_list = np.ones(len(obRun.obBands[Framenr])) * emptyval
 
     def sample_all_LCs( self, obTimes, obBands, threshold ):
         if self.mvRed != None:
             mred, vred = get_best_match( 'red', *self.mvRed)
-            rlcf = 'knRed_m%.4f_vk%.2f_Xlan1e-1.0.h5' % (mred, vred)
-            rlcf = 'kilonovaLib/' + rlcf
+            #rlcf = 'knRed_m%.4f_vk%.2f_Xlan1e-1.0.h5' % (mred, vred)
+            rlcf = 'BG_knRed_m%.4f_vk%.2f_Xlan1e-1.0.h5' % (mred, vred)
+            #rlcf = 'kilonovaLib/' + rlcf
+            rlcf = 'kilonovaLib/knLib_BG/' + rlcf
             redLC = h5py.File(rlcf, 'r' )
             if self.mvBlue == None: 
                 self.netLC['times'] = redLC['days'][:]
                 for band in self.bands:
-                    self.netLC[band] =  redLC[band][:]
+                    self.netLC[band] =  redLC[band + '_bg'][:]
                 redLC.close()
         if self.mvBlue != None:
             mblu, vblu = get_best_match( 'blue', *self.mvBlue)
-            blcf = 'knBlu_m%.4f_vk%.2f_Xlan1e-5.0.h5' % (mblu, vblu)
-            blcf = 'kilonovaLib/' + blcf
+            #blcf = 'knBlu_m%.4f_vk%.2f_Xlan1e-5.0.h5' % (mblu, vblu)
+            blcf = 'BG_knBlu_m%.4f_vk%.2f_Xlan1e-5.0.h5' % (mblu, vblu)
+            #blcf = 'kilonovaLib/' + blcf
+            blcf = 'kilonovaLib/knLib_BG/' + blcf
             bluLC = h5py.File(blcf, 'r')
             if self.mvRed == None:
                 self.netLC['times'] = bluLC['days'][:] 
                 for band in self.bands:
-                    self.netLC[band] =  bluLC[band][:]
+                    self.netLC[band] =  bluLC[band + '_bg'][:]
                 bluLC.close()
         if not self.netLC: # combine kilonova light curves
             self.netLC['times'] = redLC['days'][:]
             for band in self.bands:
-                m1, m2 = redLC[band][:], bluLC[band][:]
+                m1, m2 = redLC[band + '_bg'][:], bluLC[band + '_bg'][:]
                 m12 = -2.5*np.log10( np.power(10.0, -.4*m1) + np.power(10.0, -.4*m2) )
                 self.netLC[band] = m12
             redLC.close()
@@ -638,7 +660,6 @@ class kilonovaTemplate( transientTemplate ):
             self.bandmags_list[j] = self.f_band[band]( tSample[j] ) + dist_mod #+ Extinction
             if self.bandmags_list[j] < threshold[band]:visible = True
         #The following three items should be put into an array like with all other transients
-        visible = False
         if visible:
             self.radec_list = np.array([[self.RA, self.DEC]])
             self.bandmags_list = np.array([self.bandmags_list])
@@ -666,9 +687,9 @@ class LC_blueprint:
 
 
 def Maximum_observing_distance(mag_lim, pkmag, devmag):
-    pkmag = np.array([ pkmag[ band ] for band in pkmag.keys()]).astype(float)
+    Pkmag = np.array([ pkmag[ band ] for band in pkmag.keys()]).astype(float)
     mag_lim = np.array([ mag_lim[ band ] for band in pkmag.keys()]).astype(float)
-    exp_term = 0.2*( max( mag_lim - ( pkmag - 3.0*devmag ) ) ) + 1.0
+    exp_term = 0.2*( max( mag_lim - ( Pkmag - 3.0*devmag ) ) ) + 1.0
     Max_D = np.power( 10.0, exp_term ) # parsecs
     return Max_D
 
@@ -752,7 +773,7 @@ def PeakMagData( File, Tag, bands ):
     bands: the color bands in use 
     returns: the peak magnitudes in the color bands in use + the standard deviation
     """
-    transientsData = getFileLine( File, Tag )
+   # transientsData = getFileLine( File, Tag )
     PD = getFileLine( File, Tag )
     PeakMagData = {'U':PD[0],  'B':PD[1],  'V':PD[2],  'R':PD[3],  'I':PD[4], 
                    'J':PD[5],  'H':PD[6],  'K':PD[7],  'u':PD[8],  'g':PD[9], 
@@ -776,7 +797,8 @@ def getFileLine( file, tag ):
 
 def order_mv():
     ms, vs = [],[]
-    for f in glob.glob( 'kilonovaLib/knBlu*.h5' ) + glob.glob( 'kilonovaLib/knRed*.h5'):
+    #for f in glob.glob( 'kilonovaLib/knBlu*.h5' ) + glob.glob( 'kilonovaLib/knRed*.h5'):
+    for f in glob.glob( 'kilonovaLib/knLib_BG/BG_knBlu*.h5' ) + glob.glob( 'kilonovaLib/knLib_BG/BG_knRed*.h5'):  
         this_m = f[f.find('_m')+2:f.find('_v')]
         this_v = f[f.find('_v')+3:f.find('_X')]
         if this_m not in ms: ms.append(this_m)
@@ -792,24 +814,29 @@ def get_best_match( br, m_msun, v_c ):
     print( 'Best match for %s kilonova part: M = %.2e Msun, v = %.2f c.' % (br, m_match, v_match) )
     return m_match, v_match
     
+    
 def sampleRA(ra_lo, ra_hi):
-    ra_conv = np.array([15.0, 0.25, 1.0/240.])
-    hmslow = np.array([float(val) for val in ra_lo.split(':')])
-    hmshi= np.array([float(val) for val in ra_hi.split(':')])
-    ralo = np.sum( hmslow*ra_conv )
-    rahi = np.sum( hmshi*ra_conv )
-    if ralo > rahi: ralo, rahi = rahi, ralo
-    RA_sampled = np.random.random() * (rahi - ralo ) + ralo
+    #ra_conv = np.array([15.0, 0.25, 1.0/240.])
+    #hmslow = np.array([float(val) for val in ra_lo.split(':')])
+    #hmshi= np.array([float(val) for val in ra_hi.split(':')])
+    #ralo = np.sum( hmslow*ra_conv )
+    #rahi = np.sum( hmshi*ra_conv )
+    #if ralo > rahi: ralo, rahi = rahi, ralo
+    if ra_lo > ra_hi: ra_lo, ra_hi = ra_hi, ra_lo
+    #RA_sampled = np.random.random() * (rahi - ralo ) + ralo
+    RA_sampled = np.random.random() * (ra_hi - ra_lo) + ra_lo
     return RA_sampled
 
 def sampleDEC( dec_lo, dec_hi ):
-    dec_conv = np.array([1.0, 1.0/60.0, 1.0/3600.0])
-    dmslow = np.array([float(val) for val in dec_lo.split(':')])
-    dmshi= np.array([float(val) for val in dec_hi.split(':')])
-    declo = np.sum( dmslow*dec_conv )
-    dechi = np.sum( dmshi*dec_conv )
-    if declo > dechi: declo, dechi = dechi, declo
-    DEC_sampled = np.random.random() * (dechi - declo) + declo
+    #dec_conv = np.array([1.0, 1.0/60.0, 1.0/3600.0])
+    #dmslow = np.array([float(val) for val in dec_lo.split(':')])
+    #dmshi= np.array([float(val) for val in dec_hi.split(':')])
+    #declo = np.sum( dmslow*dec_conv )
+    #dechi = np.sum( dmshi*dec_conv )
+    #if declo > dechi: declo, dechi = dechi, declo
+    if dec_lo > dec_hi: dec_lo, dec_hi = dec_hi, dec_lo
+    #DEC_sampled = np.random.random() * (dechi - declo) + declo
+    DEC_sampled = np.random.random() * (dec_hi - dec_lo) + dec_lo
     return DEC_sampled
 
 def sampleLIGODistance(  dmax ):

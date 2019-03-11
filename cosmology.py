@@ -139,7 +139,9 @@ class Cosmology:
             for i in range(len(t) - 1):
                 Integral[i] = quad(self.integrand, 0.04e9, t[i], args=(t[i]))[0]
             Vol_rate = Integral
-
+        #The above will result in Vol_rate[z=0]=0. This is of course not true
+        # So I set Vol_rate[z=0] to be the previous Vol_rate
+        Vol_rate[-1] = Vol_rate[-2]
         return interpolate.interp1d(Z, Vol_rate)
 
 
