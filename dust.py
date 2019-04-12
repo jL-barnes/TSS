@@ -250,8 +250,55 @@ class No_dust:
             A[color] = 0
         return A
 
-
-
+#%%
+class Host_extinction:
+    def __init__(self, In, obRun):
+        """
+        Set the host galaxy extinction up for a transient.
+        'In' should be of the format 'E%f' or 'G%f' where the letter decides 
+         whether an exponential or gaussian distribution is used and %f is a 
+         float that is the scale parameter
+        """
+        self.no_host = False
+        self.obRun   = obRun
+        self.bands   = self.obRun.bands
+        self.RV_BV   = fc.RV_BV[obRun.colorScheme]
+        self.RV_BV.update(fc.RV_BV['UBVRI'])
+        if In == 'no':
+            self.no_host = True
+        else:
+            self.Exp_Gauss = In[0]
+            self.sigma     = float(In[1:])
+            if self.Exp_Gauss not in ['E', 'G', 'e', 'g']:
+                print "Warning: Invalid distribution type entered."
+                print "Please enter E... or G... in the host extinction column in", self.obRun.transientFile
+                print "No host galaxy extinction is assumed"
+                self.no_host = True
+    def Sample_host_extinction(self):
+        """
+        Sample the host galaxy extinction distribution.
+        If no host galaxy extinction is allowed for this transient, 
+         A=0 is returned.
+        Otherwise the dust extinction is sampled from either:
+            - An exponential decay
+            - A one-sided gaussian centered at A=0
+            Both with self.sigma as scale parameter
+        We assume a R_V=3.1 extinction law similar to the Milky Way.
+        """
+        A = {}
+        if self.obRun.nodust or self.no_host:
+            for color in self.bands:
+                A[color] = 0
+            return A
+        if self.Exp_Gauss in ['E', 'e']:
+            AV = np.random.exponential(scale=self.sigma)
+        elif self.Exp_Gauss in ['G', 'g']:
+            AV = abs(np.random.normal(loc=0.0, scale=self.sigma))
+        EBV = AV /  self.RV_BV['V']
+        for color in self.bands:
+            A[color] = float(EBV) * self.RV_BV[color] 
+        return A
+    
 #%%
 def InGreenBoundary(RA_lo, RA_hi, DEC_lo, DEC_hi):
     """
@@ -327,13 +374,14 @@ def Greendustquery(ra, dec, offline, Mode='galactic'):
             Dust_Ext.extend(Dust)
         Dust_Ext = np.array(Dust_Ext)
     else:
-        print "Querying remote server for Bayestar dust data..."
         ra = np.array(ra) * u.deg
         dec = np.array(dec) * u.deg
         Coords = SkyCoord(ra, dec, frame='icrs')
         if Mode == 'galactic':
+            print "Querying remote server for Galactic Bayestar dust data..."
             Dust_Ext = Query(Coords, mode='best')
         elif Mode == 'extragalactic':
+            print "Querying remote server for extragalactic Bayestar dust data..."
             Dust_Ext = Query(Coords)
 
     return Dust_Ext

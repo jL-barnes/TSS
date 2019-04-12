@@ -5,13 +5,19 @@ from astLib import astCoords
 import argparse
 
 class CCData:
-    def __init__(self, datafile, bandList):
+    def __init__(self, Opts):
         #global markerList
+        datafile = Opts.file
+        bandList = Opts.colors
         f = open(datafile, 'r')
         typesList = f.readline().split()
         hdr = f.readline().split()
         f.close()
-        #data = np.genfromtxt( datafile, skip_header =2 )
+        print "datafile", datafile
+        print typesList
+        print hdr
+        data = np.genfromtxt( datafile, skip_header =2, usecols = (0,1,2) )
+        #print data
         Data = np.genfromtxt( datafile, skip_header =2 , dtype = [int, int, float, float, float, float, ('string','S5')])
         self.bandObs = np.array([row[6] for row in Data])
         data = np.array( [[row[0], row[1], row[2], row[3], row[4], row[5]] 
@@ -45,7 +51,8 @@ class CCData:
         for C in Opts.colors:
             uniq_bands = np.unique(self.bandObs)
             if C not in uniq_bands:
-                raise ValueError("The wrong colors were requested. %s was not observed in %s which only contains observations in %s, %s and %s" % (C, Opts.file, uniq_bands[0], uniq_bands[1], uniq_bands[2]) )
+                raise ValueError("The wrong colors were requested. '%s' was not observed in %s which only contains observations in" % (C, Opts.file), list(uniq_bands) )
+
         self.times = tm
         #dt = (tm[1] - tm[0])/8.64e4
         self.n_frames = len(self.times)
@@ -59,37 +66,23 @@ class CCData:
 
 class ColorColor:
     def __init__(self, Opts, pm):
-        self.data = CCData(Opts.file, Opts.colors)
+        self.Opts = Opts
+        self.data = CCData( self.Opts )
         self.mag_lim = pm['mag_limit']
         self.bands = Opts.colors
         self.Obstimes = self.data.times
+        self.fourcolors = False
+        if len(self.bands) == 4:
+            self.fourcolors = True
         self.Alphas = np.linspace(0.85,0.1,len(self.Obstimes))
     def plotCC(self):
         cmap = plt.get_cmap('Accent')
         DotColor = {i:cmap(i//1./self.data.nTrTypes) for i in self.data.trtypes}
         Size = 15
-        """
-        SNIa = []
-        SNIb = []
-        SNIc = []
-        SNIIL = []
-        SNIIP = []
-        SNIInP = []
-        SNIInL = []
-        CVdwarf = []
-        """
-        #print np.array(self.data.TRdata[1]).shape
-        #for i,ID in enumerate(self.data.TRdata):
-        #print np.unique(self.data.trtype_data)
-        #print self.data.trtypes
-        #print self.data.IDs
+
         self.Nr_seen = {i : 0 for i in self.data.trtypes}
         for i,ID in enumerate(self.data.IDs):
-            #print i
-            #tt = int(ID[0,0])
             tt_index = int(self.data.trtype_data[i])
-            #for l,k in enumerate(self.data.trtypes):
-            #    if k == tt: tt_index = l
             B1_B0 = []
             B2_B1 = []
             times = []
@@ -105,7 +98,7 @@ class ColorColor:
                         found1 = False
                         while not found1:
                             j0+=1
-                            if j0 == len(obs_bands):
+                            if j0 >= len(obs_bands):
                                 found1 = True
                                 break
                             if obs_bands[j0] == self.bands[1]:
@@ -116,7 +109,7 @@ class ColorColor:
                                     found2 = False
                                     while not found2:
                                         j0+=1
-                                        if j0 == len(obs_bands):
+                                        if j0 >= len(obs_bands):
                                             found2 = True
                                             break
                                         if obs_bands[j0] == self.bands[2]:
@@ -124,11 +117,32 @@ class ColorColor:
                                             if B2 > self.mag_lim[ self.bands[2] ]:
                                                 found1 = True
                                             else:
-                                                B2_B1.append(B2 - B1)
-                                                B1_B0.append(B1 - B0)
-                                                times.append(self.data.time_data[i][entry])
-                                                found2 = True
-                                                found1 = True
+                                                ########### For 4 colorbands
+                                                if self.fourcolors:
+                                                    found3 = False
+                                                    while not found3:
+                                                        j0+=1
+                                                        if j0 >= len(obs_bands):
+                                                            found3 = True
+                                                            break
+                                                        if obs_bands[j0] == self.bands[3]:
+                                                            B3 = obs_mags[j0]
+                                                            if B3 > self.mag_lim[ self.bands[3] ]:
+                                                                found1 = True
+                                                            else:
+                                                                B2_B1.append(B3 - B2)
+                                                                B1_B0.append(B1 - B0)
+                                                                times.append(self.data.time_data[i][entry])
+                                                                found3 = True
+                                                                found2 = True
+                                                                found1 = True
+                                                ####
+                                                else:
+                                                     B2_B1.append(B2 - B1)
+                                                     B1_B0.append(B1 - B0)
+                                                     times.append(self.data.time_data[i][entry])
+                                                     found2 = True
+                                                     found1 = True
                                 if j0 == len(obs_bands):
                                     found2 = True
                                     break
@@ -137,7 +151,6 @@ class ColorColor:
                 if j0 == len(obs_bands):
                     found0 = True
                     break
-                
             rgbacolors = np.zeros((len(B1_B0),4))
             rgbacolors[:,:3] = DotColor[tt_index][:3]
 
@@ -157,7 +170,7 @@ class ColorColor:
 
         legendhandles = []
         
-        print "Nr of transients seen:"
+        print "Nr of transients seen in all %d colors:" % (len(self.bands))
         for tt_index in self.data.trtypes:
             print self.data.trtypenr[tt_index], ":", self.Nr_seen[tt_index]
 
@@ -165,24 +178,86 @@ class ColorColor:
             tt_index = int(self.data.trtypes[i])
             C = DotColor[tt_index]
             legendhandles.append( mpatches.Patch(color=C, label=Transient))
-        plt.xlabel('%s - %s' %(self.bands[1], self.bands[2]))
+        if self.fourcolors:
+            plt.xlabel('%s - %s' %(self.bands[2], self.bands[3]))
+        else:
+            plt.xlabel('%s - %s' %(self.bands[1], self.bands[2]))
         plt.ylabel('%s - %s' %(self.bands[0], self.bands[1]))
         plt.legend(handles=legendhandles)
-        plt.savefig(Opts.output)
-
-
-
-def ColorColorSky(Opts, pm):
+        plt.savefig(self.Opts.output)
+        print "Plot saved to ", self.Opts.output
+        
+class pmOpts:
     """
-    Make a color-color plot using the data that is generated with the main.py script 
+    Objects of this class should only be generated if colorcolor.py is not run
+     directly.
+    Objects of this class contain the options that would otherwise be generated 
+     by getOpts().
+    """
+    def __init__(self, bands, Opts_TSS, pm):
+        self.params = pm['filename']
+        self.file   = Opts_TSS.output
+        self.output = pm['CC_outfile']
+        self.possible = True  #Boolean that notes whehter it is possible to make a CC diagram.
+        self.colors = self.selectcolors( bands, Opts_TSS, pm )
+        
+    def selectcolors(self, bands, Opts_TSS, pm ):
+        correct_colors = np.all([C in bands for C in pm['CC_bands']])
+        corr_nr_colors = len(pm['CC_bands']) in [3,4]
+        if correct_colors and corr_nr_colors and len(bands) > 2:
+            return pm['CC_bands']
+        else:
+            print "Warning: CC_bands in params.py did not contain a correct entry."
+            if not correct_colors:
+                print "Warning: the wrong colors were requested. Please check that CC_bands in params.py contains only colors that were observed."
+            if not corr_nr_colors:
+                print "Warning: The number of filters in CC_bands in params.py is incorrect. It should be 3 or 4."
+            if len(bands) < 3:
+                print "Observations were made in less than 3 filters."
+                print "The number of filters needed for a color-color diagram is 3 or 4."
+                print "Please generate data with more colors"
+                print "No color-color diagram will be made."
+                self.possible = False
+                return bands
+            elif len(bands) == 3:
+                print "Therefore, a color-color diagram is being created based on the 3 colors that were observed."
+                #The first two filters come on the y-axis, the 2nd and 3rd on the x-axis.
+                return bands
+            elif len(bands) == 4:
+                print "Therefore, a color-color diagram is being created based on the 4 colors that were observed."
+                print "If you would like a CC diagram with 3 filters, please run colorcolor.py with the --color argument."
+                #The first two filters come on the y-axis, the 3rd and 4th on the x-axis.
+                return bands
+            else:
+                print "There are more observed filters than fit in a color-color diagram."
+                print "The number of filters needed for a color-color diagram is 3 or 4."
+                print "We now take the first four filters of the observations to draw a CC-diagram with."
+                print "If that is not good, please run colorcolor.py with the --color argument."
+                return bands[:4]
+            
+
+def _ColorColorSky(Opts, pm):
+    """
+    Make a color-color plot using the data that was generated earlier by TSS. 
     """
     print "Drawing Color-color plot"
     cc = ColorColor( Opts, pm )
     cc.plotCC()
 
+def ColorColorSky(bands, Opts_TSS, pm):
+    """
+    A function that calls _ColorColorSky with parameters that would usually be
+     in Opts taken from pm.
+    This function should be called by external python files.
+    """
+    Opts = pmOpts(bands, Opts_TSS, pm)
+    if Opts.possible:
+        _ColorColorSky(Opts, pm)
+        
+
 def getOpts():
     parser = argparse.ArgumentParser(description='Animate an output of TSS')
-    parser.add_argument("-c", "--colors", nargs = '*', default = ['g', 'r', 'i'], help="The colors/passbands to create a color-color plot for. If you fill in A B C, this will create a plot for A-B against B-C. One should always enter 3 colors. Please enter them in the order of observation.")
+    parser.add_argument("-c", "--colors", nargs = '*', default = ['g', 'r', 'i'], help="The colors/passbands to create a color-color plot for. If you fill in A B C, this will create a plot for A-B against B-C, if you enter A B C D, this will create a plot for A-B against C-D. One should always enter 3 or 4 colors. Please enter them in the order of observation.")
     parser.add_argument("-p", "--params", default = 'params.py', help="Define a file with observation parameters. default:params.py")
     parser.add_argument("-f", "--file", help="The file (that was output by TSS) to make a color-color diagram of. default: outfile in the params file")
     parser.add_argument("-o", "--output", default = 'CC.png', help ="The output file. default: CC.png")
@@ -191,11 +266,11 @@ def getOpts():
     return args
 
 def checkOpts(Opts):
-    if len(Opts.colors) != 3:
-        raise ValueError('The colors argument did not have 3 passbands entered, but ', len(Opts.colors))
+    if len(Opts.colors) not in [3, 4]:
+        raise ValueError('The colors argument did not have 3 or 4 passbands entered, but ', len(Opts.colors))
 
 def printOpts(Opts):
-    print "Running TSS with options:"
+    print "Running colorcolor.py with options:"
     if Opts.colors:
         print "[-c] [--colors]  ", Opts.colors
     if Opts.params:
@@ -203,28 +278,26 @@ def printOpts(Opts):
     if Opts.file:
         print "[-f] [--file]    ", Opts.file
     if Opts.output:
-        print "[-o] [--output] ", Opts.output
+        print "[-o] [--output]  ", Opts.output
     
 if __name__ == "__main__": 
     """
-    Run as: python main.py [Arguments]
+    Run as: python colorcolor.py [Arguments]
     Optional arguments:
-    [-c] [--colors]    The colors/passbands to create a color-color plot for. If you fill in A B C, this will create a plot for A-B against B-C. Please enter them in the order of observation.
+    [-c] [--colors]    The colors/passbands to create a color-color plot for. If you fill in A B C, this will create a plot for A-B against B-C, if you enter A B C D, this will create a plot for A-B against C-D. Please enter them in the order of observation.
     [-p] [--params]    Params file to use. default:params.py
     [-f] [--file]      The file (that was output by TSS) to make a color-color plot from. default: outfile in the params file
     [-o] [--output]    The output file. default: CC.png
+    These arguments will override any arguments in params.py
     """
     Opts = getOpts()
     printOpts(Opts)
     
     pm = {}
     execfile(Opts.params, pm)
+    pm['filename'] = Opts.params
     if not Opts.file:
         Opts.file = pm['outfile']
     checkOpts(Opts)
         
-    ColorColorSky(Opts, pm)
-
-
-    #ColorColorSky(['g','r', 'i'], 'long2.dat')
-
+    _ColorColorSky(Opts, pm)

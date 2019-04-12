@@ -4,6 +4,7 @@ from astLib import astCoords
 import MilkyWay as MW
 import cosmology as cm
 import dust
+import h5py
 
 
 class cell:
@@ -100,6 +101,20 @@ class cell:
         randDist = self.DMid + (z3 - 0.5)* self.hD
         return [randRA, randDEC, randDist]   
     def sampleCoords( self ):
+        """
+        Sample a random coordinate within this cell.
+        The cell is NOT rectangular. 
+        Therefore we first sample a declination.
+        At that declination we calculate the width of the cell in RA, 
+         and sample the RA coordinate.
+        We also sample a random distance coordinate within the cell.
+        Ultimately we need to know whether this particular coordinate overlaps
+         with other cells. 
+        The transients in the overlapping part of the cell need to be
+         distributed accordingly over all overlapping grids.
+        We therefore inject this transient in THIS cell/grid with a probability
+         of 1/(nr. of overlapping cells + 1)
+        """
         z1 = np.random.random()
         z2 = np.random.random()
         z3 = np.random.random()
@@ -107,14 +122,24 @@ class cell:
         width_at_DEC = self.Grid.obRun.aperture_RA / np.cos(randDEC * (np.pi/180.)) 
         self.hRA = width_at_DEC / self.Grid.N_RA
         startRA = ( self.Grid.RA_c - 0.5 * width_at_DEC + 
-                    self.cellnr_from_left * self.hRA )
+                    (self.cellnr_from_left + 0.5) * self.hRA )
         randRA   = startRA + (z2 - 0.5)* self.hRA
         randDist = self.DMid + (z3 - 0.5)* self.hD
-        return [randRA, randDEC, randDist]
+        
+        N_overlapping_grids = 0
+        for i,grid in enumerate(self.Grid.obRun.SkyGrids):
+            if i != self.Grid.gridnr:
+                if grid.WithinFrame(randRA, randDEC):
+                    N_overlapping_grids +=1
+        rand_nr = np.random.random_sample()
+        if rand_nr < 1. / (N_overlapping_grids + 1):
+            return [randRA, randDEC, randDist]
+        else:
+            return []
 
 
 class grid:
-    def __init__(self, pm, Dmax_xgal, Gal_trans, Xgal_trans, gridnr, obRun):
+    def __init__(self, pm, Dmax_xgal, gridnr, obRun):
         """
         rA_lo      = astCoords.hms2decimal(pm['RA_lo'],":")
         rA_hi      = astCoords.hms2decimal(pm['RA_hi'],":")
@@ -144,8 +169,8 @@ class grid:
         self.N_xgal      = pm['nCells_xgal']
         self.h_DMW       = self.Dmax_MK / float(self.N_DMW)
         self.h_xgal      = (Dmax_xgal - self.Dmax_MK) / float(self.N_xgal)
-        self.Gal_trans	 = Gal_trans    #Whether there are Gal transients
-        self.Xgal_trans  = Xgal_trans	#Whether there are Xgal transients
+        self.Gal_trans	 = obRun.Gal_trans    #Whether there are Gal transients
+        self.Xgal_trans  = obRun.Xgal_trans	#Whether there are Xgal transients
         self.bands       = self.obRun.bands
         if self.Xgal_trans:
             self.Cosmo = cm.Cosmology(Dmax_xgal)
@@ -285,6 +310,19 @@ class grid:
             print "Excluding dust extinction in the simulation"
             self.Xtr_dust = dust.No_dust(self.bands)
             self.Gal_dust = dust.No_dust(self.bands)
+    def WithinFrame( self, RA, DEC ):
+        """
+        Check whether the object at coordinates (RA, DEC) is within the frame 
+         of this grid instance.
+        """
+        if DEC < self.DEC_lo or DEC > self.DEC_hi:
+            return False
+        width_at_DEC = self.obRun.aperture_RA / np.cos(DEC * (np.pi/180.)) 
+        RA_l = self.RA_c - (0.5 * width_at_DEC )
+        RA_r = self.RA_c + (0.5 * width_at_DEC )
+        if RA < RA_l or RA > RA_r:
+            return False
+        return True
             
 
 class timeFrame:
@@ -350,57 +388,36 @@ class observation:
     def __init__(self, pm, Opts):
         self.Opts           = Opts
         self.pm             = pm
-        self.setTransientsList()
-        self.Peak_mag_f     = pm['PeakMagFile']
         self.transientFile  = pm['transientFile']
         self.MdwarfFile     = pm['MDwarfFile']
         self.mag_resolution = pm['mag_resolution']
         self.aperture_DEC   = pm['aperture_DEC']
         self.aperture_RA    = pm['aperture_RA']
         self.maxLIGODist    = pm['maxLIGODist']
+        self.Gal_trans      = False
+        self.Xgal_trans     = False
+        self.set_TransientsList()
         self.TimeParams = timeFrame( self.Opts.file )
         #self.NrFrames       = len(np.unique(self.TimeParams.RAc))
         self.nodust         = Opts.nodust
-        self.setUpColors( pm['color_system'] )
-        self.setUpMag_lim(pm['mag_limit'])
+        self.set_Colors( pm['color_system'] )
+        self.set_Mag_lim(pm['mag_limit'])
         # determine max distance (extra-galactic)
-        brightest = 100.0 * np.ones( len( self.bands ) )
-        Gal_trans, Xgal_trans = False, False 
-        f = open( self.Peak_mag_f, 'r' )
-        while f.readline() != '\n':
-            pass
-        if not self.transientsList == []:
-            for line in f:
-                fields = line.split()
-                if fields[0] in self.transientsList:
-                    pkmag = {'U':fields[1], 'B':fields[2], 'V':fields[3], 'R':fields[4], 'I':fields[5], 'J':fields[6], 'H':fields[7], 'K':fields[8], 'u':fields[9], 'g':fields[10], 'r':fields[11], 'i':fields[12], 'z':fields[13], 'y':fields[14], 'q':fields[15]}
-                    pkmag = np.array([ pkmag[ band ] for band in self.bands]).astype(float)
-                    devmag = float(fields[16])
-                    brightest = np.minimum(brightest, pkmag - 3.0*devmag)
-                    trData = getFileLine( self.transientFile, fields[0] )
-                    Galtype = int( trData[0] )
-                    if Galtype in [0,1,2]:
-                        Gal_trans = True	#There are galactic transients
-                    if Galtype == 3:
-                        Xgal_trans = True	#There are extragalactic transients
-        f.close()
-        exp_term = 0.2*( max(self.mag_lim - brightest) ) + 1.0
-        Dmax_xgal = np.power( 10.0, exp_term ) # parsecs
-        Dmax_xgal /= 1.0e3 # kiloparsecs
-        print "Dmax_xgal = %.2e Mpc\n" % (Dmax_xgal/1e3)
+        Dmax_xgal = self.Get_Max_observing_D()
         # set the properties of the sky window
         self.obTimes       = self.TimeParams.get_Dates()
         self.obBands       = self.TimeParams.get_ObBands()
         self.obFrames      = self.TimeParams.get_Frames()
         self.Nframes       = self.TimeParams.Nr_Frames
         self.obFrameCoords = self.TimeParams.FrameCoords   #Center coordinates of the frames
+
         self.SkyGrids      = []
         for i in range(self.Nframes):
-            self.SkyGrids.append( grid( self.pm, Dmax_xgal, Gal_trans, 
-                                       Xgal_trans, i, self ))
+            self.SkyGrids.append( grid( self.pm, Dmax_xgal, i, self ))
             #self.SkyGrids[i].resize( 2.0, 1 )
             self.SkyGrids[i].setCellValues()
-    def setUpColors( self, col ):
+
+    def set_Colors( self, col ):
         if col.upper() == 'UBVRI': colr = col.upper()
         elif col.lower() == 'sdss': colr = col.lower()
         elif col.lower() == 'blackgem': colr = col.lower()
@@ -409,17 +426,25 @@ class observation:
         self.colorScheme = colr
         self.bands = self.TimeParams.get_Bands()
         self.nBands = len(self.bands)
-    def setUpMag_lim(self, mag_limit):
+    def set_Mag_lim(self, mag_limit):
         self.threshold = mag_limit
         for c in self.bands:
             if c not in self.threshold:
                 raise Exception("There is no magnitude limit defined for ", c, " in params.py")
         self.mag_lim        = [ self.threshold[ band ] for band in self.bands]
-    def setTransientsList( self):
+    def set_TransientsList( self ):
+        """
+        Sets up a list of transients. These are obtained from the parameters 
+         file.
+        It also creates a legend where a transient is coupled to an integer.
+        It also decides whether there are any Galactic and any extragalactic
+         transients.
+        """
         self.transientsList = []
         if self.pm['use_nova']:     self.transientsList.append( 'nova' )
-        if self.pm['use_CVdwarf']:  self.transientsList.append( 'CVdwarf' )
-        if self.pm['use_AMCVn']:    self.transientsList.append( 'AMCVn' )
+        if self.pm['use_UGem']:     self.transientsList.append( 'UGem' )
+        if self.pm['use_SUUMa']:    self.transientsList.append( 'SUUMa' )
+        if self.pm['use_ZCam']:     self.transientsList.append( 'ZCam' )
         if self.pm['use_SNIa']:     self.transientsList.append( 'SNIa' )
         if self.pm['use_SNIb']:     self.transientsList.append( 'SNIb' )
         if self.pm['use_SNIc']:     self.transientsList.append( 'SNIc' )
@@ -435,6 +460,67 @@ class observation:
         self.Trlegend = {}
         for i,transient in enumerate(self.transientsList):
             self.Trlegend[transient] = i
+            trData = getFileLine( self.transientFile, transient )
+            Galtype = int( trData[0] )
+            if Galtype in [0,1,2]:
+                self.Gal_trans = True	#There are galactic transients
+            if Galtype in [3,4]:
+                self.Xgal_trans = True	#There are extragalactic transients
+    def Get_Max_observing_D( self ):
+        """
+        Sets the maximum observing distance to which we need to generate
+         extragalactic transients.
+        """
+        brightest = 100.0 * np.ones( len( self.bands ) )
+        for transient in self.transientsList:
+            trData = getFileLine( self.transientFile, transient )
+            if not int(trData[0]) in [3,4]:
+                continue   #We're only calculating for extragalactic transients
+            std_mag_R = float(trData[12])
+            LCFile    = 'LightCurveFiles/' + trData[5]
+            lcdata_up = h5py.File( LCFile + '_UBVRI.hdf5', 'r' )
+            lcdata_lo = h5py.File( LCFile + '_%s.hdf5' % self.colorScheme, 'r')
+            if self.colorScheme == 'UBVRI':
+                for band in self.bands:
+                    if band not in ['U','B','V','R','I','J','H','K']:
+                        raise TypeError("You're trying to observe in bands that are not in the color_system in %s. Please check your %s and %s" % (self.Opts.params, self.Opts.params, self.Opts.file))
+            if int( trData[0] ) == 3:
+                Kcorfile_up = h5py.File('LightCurveFiles/Kcorrections/%s_%s.hdf5' % (trData[5], self.colorScheme),'r')
+                Kcorfile_lo = h5py.File('LightCurveFiles/Kcorrections/%s_%s.hdf5' % (trData[5], self.colorScheme),'r')
+                for i,band in enumerate(self.bands):
+                    if band.islower():
+                        Kcorfile = Kcorfile_lo
+                        lcdata = lcdata_lo
+                    elif band.isupper():
+                        Kcorfile = Kcorfile_up
+                        lcdata = lcdata_up
+                    if not band in lcdata.keys():
+                        print "no data for %s band for %s" % (band, transient)
+                    minimum_band = brightest[i]
+                    for z in range(len(Kcorfile[band][0,:])):
+                        new_minimum = min(lcdata[band][:] + Kcorfile[band][:,z])
+                        minimum_band = min(minimum_band, new_minimum)
+                    brightest[i] = minimum_band - 3 * std_mag_R
+            elif int( trData[0] ) == 4:
+                for i,band in enumerate(self.bands):
+                    if band.islower():
+                        lcdata = lcdata_lo
+                    elif band.isupper():
+                        lcdata = lcdata_up
+                    if not band in lcdata.keys():
+                        print "no data for %s band for %s" % (band, transient)
+                    print lcdata_lo
+                    minimum_band = min(lcdata[band][:])
+                    brightest[i] = min(minimum_band, brightest[i]) -3*std_mag_R
+        exp_term = 0.2*( max(self.mag_lim - brightest) ) + 1.0
+        Dmax_xgal = np.power( 10.0, exp_term ) # in parsecs
+        Dmax_xgal /= 1.0e3 # in kiloparsecs
+        Dmax_xgal = max(Dmax_xgal, MW.DMax_MW_kpc)
+        print "Maximum distance = %.2e Mpc\n" % (Dmax_xgal/1e3)  
+        return Dmax_xgal
+            
+            
+            
     def take_data( self, transientDataSet, outFile, TrTypes, TrTypenrs, nrTrs ):
         """
         nrTrs:  The number of transients that have already been saved
@@ -446,9 +532,6 @@ class observation:
         below_threshold = np.max(self.mag_lim) + 0.5 * self.mag_resolution
         self.convert_toAB   = np.zeros(nTimeSteps, dtype=bool)
         self.convert_toVega = np.zeros(nTimeSteps, dtype=bool)
-        #self.convert_toAB   = np.zeros(len(self.obBands), dtype=bool)
-        #self.convert_toVega = np.zeros(len(self.obBands), dtype=bool)
-        #for i,band in enumerate(self.obBands):
         for i,band in enumerate(self.obBands[framenr]):
             if self.Opts.colorsys == 'AB':
                 if band.isupper():
@@ -564,23 +647,15 @@ class observation:
         for i in range( nTimeSteps ):
             #print "hello", nTimeSteps
             for j in range( nTr_tot - nrTrs ):
-                #radec = radec_coords[j]
-                #bandDat = mags[j,i]
-                #print mags[j,i], j, i
                 bandDat = '{0:0.3f}'.format(mags[j,i])
-                #TimeDat = '{0:0.2f}'.format(self.obTimes[i])
                 TimeDat = '{0:0.2f}'.format(self.obTimes[framenr][i])
                 RADEC = radec_coords[j].tolist()
                 RADat = '{0:0.4f}'.format(RADEC[0])
                 DECDat = '{0:0.4f}'.format(RADEC[1])
-                #passband = Passbands[j][i]
-                #Onerow = [trIds[j], types[j]] +  [self.obTimes[i]] + radec.tolist() + [bandDat] + [passband]
-                #Onerow = [trIds[j], types[j]] +  [self.obTimes[i]] + radec.tolist() + [bandDat] + [self.obBands[i]]
                 Onerow = [trIds[j], types[j]] +  [TimeDat] + [RADat] + [DECDat] + [bandDat] + [self.obBands[framenr][i]]
                 #print Onerow
                 allData.append(Onerow)
-                #cwr.writerow( allDat )
-        #f.close()
+
         return allData,  TrTypes, TrTypenrs, nTr_tot
     """
     def writetofile(self, trTemp, bandSets):
@@ -595,16 +670,16 @@ class observation:
     """
     def OpenFile(self, outFile, trTypes, trLegend):
         #set up output file
-        f = open( outFile, 'wb' )
+        self.f = open( outFile, 'wb' )
         lineTR = []
         for i,Tr in enumerate(trTypes):
             #lineTR.append(i)
             lineTR.append(trLegend[Tr])
             lineTR.append(Tr)
         # set up csv
-        cwr = csv.writer( f, delimiter = '\t' )
+        cwr = csv.writer( self.f, delimiter = '\t' )
         cwr.writerow( lineTR)# + [1, 'thing_1', 2, 'alien_flashlights'] )
-        hdrs = ['iD','type','time', 'RA', 'DEC', 'band']
+        hdrs = ['iD','type','time', 'RA', 'DEC', 'mag', 'band']
         cwr.writerow(hdrs)
         return cwr
 
@@ -612,6 +687,8 @@ class observation:
         for row in Data:
             cwr.writerow(row)
 
+    def CloseFile(self):
+        self.f.close()
 
 def getFileLine( file, tag ):
     f = open( file, 'r' )

@@ -98,7 +98,6 @@ class AnData:
         
         
 class Animated:
-    #def __init__(self, dataFile, bandlist):
     def __init__(self, Opts, pm):
         self.Opts = Opts
         bandlist = self.Opts.colors
@@ -142,8 +141,6 @@ class Animated:
         #self.plot_init()
         #Frames = np.arange(self.data.n_frames)
         self.init_framelength()
-        print self.framelength
-        print "sum", sum(self.framelength)
         Frames = [0]
         for i in range(self.data.n_frames - 1):
             for j in range(self.framelength[i]):
@@ -168,7 +165,6 @@ class Animated:
         self.timeintervals = np.zeros(self.data.n_frames - 1)
         for i in range(len(self.data.times) - 1):
             self.timeintervals[i] = self.data.times[i+1] - self.data.times[i]
-        print "timeintervals", self.timeintervals
         #self.framelength = np.ones(len(self.data.timeintervals))
         minframelength = min(self.timeintervals)
         self.framelength = (self.timeintervals / minframelength).astype(int)
@@ -211,11 +207,7 @@ class Animated:
             uniqbands = np.unique(self.data.tF_bands[i] )
             innotinitb = np.array([b in not_initiated_bands for b in uniqbands] )
             if any(innotinitb):
-                print "hello", uniqbands
-                print "hello", uniqbands[innotinitb]
-                print type(innotinitb), type(self.data.tF_bands[i])
                 for band in uniqbands[innotinitb]:
-                    print band
                     #print np.shape(self.data.timeFrames[i,:]), np.shape(self.data.tF_bands), np.shape(self.data.times[i])
                     init_dat, init_t = self.data.timeFrames[i], self.data.times[i]
                     Boolean1 = np.array(init_dat[:,4] <= self.mag_lim[band])
@@ -233,7 +225,6 @@ class Animated:
                         ids = np.where( this_type == k )[0]
                         if k == 1:
                             self.idsblablab = ids
-                        print this_ra, "ra"
                         sc = self.axs[colornr].scatter( this_ra[ids], this_dec[ids], s = sizes[ids], c = rgba_cols[ids],\
                                                        marker=markerList[k], figure=self.fig)  
                         #sc = ax1[0].scatter( this_ra[ids], this_dec[ids])
@@ -253,7 +244,6 @@ class Animated:
         self.init_bands = np.array(self.init_bands)
         self.time_text = self.axs[0].text( 0.0, 1.03, "t = %.2f days" % (init_t/8.64e4), transform=self.axs[0].transAxes)
         #self.anim.event_source.interval =  self.data.timeintervals[0] / one_night * ms_per_night   #Sets the interval between two frames. 
-        print self.anim.event_source.interval
         return self.scatters, self.timetext   
     def update( self, frame_no ):
         #print "hi", self.anim.event_source.interval
@@ -279,16 +269,49 @@ class Animated:
         self.time_text.set_text( 't = %.2f days' % (t/8.64e4))
         #self.anim.event_source.interval =  (self.data.timeintervals[frame_no-1] 
         #                                    / one_night * ms_per_night )  #Sets the interval between two frames. 
-        return self.scatters,self.timetext     
+        return self.scatters,self.timetext    
+    
+class pmOpts:
+    """
+    Objects of this class should only be generated if colorcolor.py is not run
+     directly.
+    Objects of this class contain the options that would otherwise be generated 
+     by getOpts().
+    """
+    def __init__(self, bands, Opts_TSS, pm):
+        self.params = pm['filename']
+        self.file   = Opts_TSS.output
+        self.output = pm['Ani_outfile']
+        self.samefr = pm['Ani_samefr']
+        self.colors = self.selectcolors( bands, Opts_TSS, pm )
+        
+    def selectcolors(self, bands, Opts_TSS, pm ):
+        correct_colors = np.all([C in bands for C in pm['Ani_bands']])
+        if correct_colors:
+            return pm['Ani_bands']
+        else:
+            print "Warning: the wrong colors were requested. Please check that Ani_bands in params.py contains only colors that were observed."
+            print "Therefore, an animation is being created based on the colors that were observed."
+            return bands
 
-def AnimateSky(Opts, pm):
-    print "beginning animation"
+
+def _AnimateSky(Opts, pm):
+    print "beginning animation of colors ", Opts.colors
     an = Animated( Opts, pm )
     Writer = animation.writers['ffmpeg']
     FPS = int(an.FPN * nights_per_minute)
     writer = Writer(fps = FPS, metadata=dict(artist='me'), bitrate=1800)
     an.anim.save(Opts.output, writer = writer) 
     print "Animation saved to ", Opts.output
+    
+def AnimateSky(bands, Opts_TSS, pm):
+    """
+    A function that calls _AnimateSky with parameters that would usually be
+     in Opts taken from pm.
+    This function should be called by external python files.
+    """
+    Opts = pmOpts(bands, Opts_TSS, pm)
+    _AnimateSky(Opts, pm)
 
 def getOpts():
     parser = argparse.ArgumentParser(description='Animate an output of TSS')
@@ -302,7 +325,7 @@ def getOpts():
     return args
 
 def printOpts(Opts):
-    print "Running TSS with options:"
+    print "Running Animation.py with options:"
     if Opts.colors:
         print "[-c] [--colors]  ", Opts.colors
     if Opts.params:
@@ -317,22 +340,24 @@ def printOpts(Opts):
 
 if __name__ == "__main__": 
     """
-    Run as: python main.py [Arguments]
+    Run as: python Animation.py [Arguments]
     Optional arguments:
     [-c] [--colors]    The colors/passbands to animate. Can be multiple. 
     [-p] [--params]    Params file to use. default:params.py
     [-f] [--file]      The file (that was output by TSS) to animate. default: outfile in the params file
     [-r] [--samefr]    Do not change the framerate for two epochs that are far apart
     [-o] [--output]    The output file. default: Animation.mp4
+    These arguments will override any arguments in params.py
     """
     Opts = getOpts()
     printOpts(Opts)
     
     pm = {}
     execfile(Opts.params, pm)
+    pm['filename'] = Opts.params
     if not Opts.file:
         Opts.file = pm['outfile']
         
     #AnimateSky(['u', 'g'], 'long.dat')
-    AnimateSky(Opts, pm)
+    _AnimateSky(Opts, pm)
 

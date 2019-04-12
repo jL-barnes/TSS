@@ -3,7 +3,8 @@ from scipy import interpolate
 from scipy.interpolate import RectBivariateSpline
 import h5py
 import numpy as np
-import localcosmolopy as lcm
+#import localcosmolopy as lcm
+import cosmolopy.distance as cd
 
 Mpc = 3.0857e22		#meter
 H0 = 67.3
@@ -25,11 +26,11 @@ class Cosmology:
         self.Omega_K = 0
         self.MaxDist = MaxDist		#Maximum Lum. Dist. of grid in kpc
         self.Zarray = np.logspace(-5,2,1e3)	#Range chosen to have all cosmological possibilities
-        self.Darray = lcm.luminosity_distance(self.Zarray, 
-                                              omega_M_0 = self.Omega_M, 
-                                              omega_lambda_0 = self.Omega_L, 
-                                              omega_k_0 = self.Omega_K, 
-                                              h= self.H0/1e5 * Mpc)
+        self.Darray = cd.luminosity_distance(self.Zarray, 
+                                             omega_M_0 = self.Omega_M, 
+                                             omega_lambda_0 = self.Omega_L, 
+                                             omega_k_0 = self.Omega_K, 
+                                             h= self.H0/1e5 * Mpc)
         self.fn = interpolate.interp1d(self.Darray, self.Zarray)#,
                                        #fill_value = "extrapolate")
         self.factor = 0.001759927	#The normalization factor for PSI
@@ -122,10 +123,10 @@ class Cosmology:
         self.tmax = self.age_from_redshift (0) #Current age of universe
         zmin = self.get_redshift(self.MaxDist / 1.e3)
         print "Calculating cosmology up to z = ", zmin
-        tmin = lcm.age(zmin, omega_M_0 = self.Omega_M, 
-                             omega_lambda_0 = self.Omega_L, 
-                             omega_k_0 = self.Omega_K, 
-                             h= self.H0/1e5 * Mpc) * self.s2yr
+        tmin = cd.age(zmin, omega_M_0 = self.Omega_M, 
+                            omega_lambda_0 = self.Omega_L, 
+                            omega_k_0 = self.Omega_K, 
+                            h= self.H0/1e5 * Mpc) * self.s2yr
         t = np.linspace(tmin / 1.1, self.tmax,1000)
         Z = self.redshift_from_age(t) 
         Z[-1] = 0.0	#Due to rounding errors Python may calculate 
@@ -163,12 +164,16 @@ class Kcor:
         Kcormodel: the name of the transient model as used in SNCosmo
         colorsystem: The color system in use: UBVRI, sdss, blackgem or lsst
         """
-        Kcorfile = h5py.File('LightCurveFiles/Kcorrections/%s_%s.hdf5' % (Kcormodel, colorsys),'r')
+        Kcorfile_up = h5py.File('LightCurveFiles/Kcorrections/%s_UBVRI.hdf5' % (Kcormodel),'r')
+        Kcorfile_lo = h5py.File('LightCurveFiles/Kcorrections/%s_%s.hdf5' % (Kcormodel, colorsys),'r')
         self.Kcorfuns = {}
-        bands = obBands
-        redshifts = Kcorfile['Z']
-        times = Kcorfile['times']
-        for band in bands:
+        for band in obBands:
+            if band.islower():
+                Kcorfile = Kcorfile_lo
+            elif band.isupper():
+                Kcorfile = Kcorfile_up
+            redshifts = Kcorfile['Z']
+            times = Kcorfile['times']
             K_band = Kcorfile[band][:]
             self.Kcorfuns[band] = RectBivariateSpline(times, redshifts, K_band) 
 
