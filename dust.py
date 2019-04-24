@@ -49,7 +49,7 @@ class Green_Extinction:
         A = {}
         EBV = self.f( [ra, dec, dmod] )
         if EBV == emptyval or math.isnan(EBV):	#Out of intpol range
-            A = self.Xtr_dust.Sample_extinction(ra, dec)
+            A = self.Xtr_dust.Sample_extinction(ra, dec, D)
         else:
             for color in self.bands:
                 A[color] = float(EBV) * self.RV_BV[color] 
@@ -125,7 +125,7 @@ class Schlegel_Extinction:
         self.RV_BV       = fc.RV_BV[colorscheme]
         self.RV_BV.update(fc.RV_BV['UBVRI'])
 
-    def Sample_extinction(self, ra, dec):
+    def Sample_extinction(self, ra, dec, D):
         """
         Sample the 2D dust grid to obtain the EBV at
          the location of the transient
@@ -206,7 +206,7 @@ class Schultheis_Extinction:
         A = {}
         EJK = self.f( [lon, lat, D] )
         if EJK == emptyval or math.isnan(EJK):	#Out of intpol range
-            A = self.Xtr_dust.Sample_extinction(ra, dec)
+            A = self.Xtr_dust.Sample_extinction(ra, dec, D)
         else:
             for color in self.bands:
                 A[color] = float(EJK) * self.RV_JK[color] 
@@ -241,7 +241,7 @@ class No_dust:
         self.Name        = "No dust"
         self.queried     = False
         self.bands       = bands
-    def Sample_extinction(self, ra, dec, d=0):
+    def Sample_extinction(self, ra, dec, d):
         """
         We ignore dust, so, A=0
         """

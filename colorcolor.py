@@ -20,6 +20,12 @@ class CCData:
         #print data
         Data = np.genfromtxt( datafile, skip_header =2 , dtype = [int, int, float, float, float, float, ('string','S5')])
         self.bandObs = np.array([row[6] for row in Data])
+        for C in Opts.colors:
+            uniq_bands = np.unique(self.bandObs)
+            if C not in uniq_bands:
+                raise ValueError("The wrong colors were requested. '%s' was not observed in %s which only contains observations in" % (C, Opts.file), list(uniq_bands) )
+        self.bandorder = self.Get_bandorder(Opts.colors)
+        print self.bandorder, "bandorder"
         data = np.array( [[row[0], row[1], row[2], row[3], row[4], row[5]] 
                           for row in Data] )
         if np.array(data).shape == (6,):
@@ -48,10 +54,6 @@ class CCData:
             self.mag_data.append( data[Bool, 5] )
             self.band_data.append( self.bandObs[Bool] )
             self.trtype_data.append( data[Bool][0, 1])
-        for C in Opts.colors:
-            uniq_bands = np.unique(self.bandObs)
-            if C not in uniq_bands:
-                raise ValueError("The wrong colors were requested. '%s' was not observed in %s which only contains observations in" % (C, Opts.file), list(uniq_bands) )
 
         self.times = tm
         #dt = (tm[1] - tm[0])/8.64e4
@@ -63,6 +65,16 @@ class CCData:
         self.nTrTypes = len(self.trtypes)
         self.trNames = trNames
         self.trtypenr = {self.trtypes[i]:self.trNames[i] for i in range(self.nTrTypes)}
+    def Get_bandorder( self, colors ):
+        bandorder = {}
+        bands     = []
+        colors     = np.array(colors)
+        for b in self.bandObs:
+            if b not in bands:
+                bands.append(b)
+                if b in colors:
+                    bandorder = {int(np.argwhere(colors == b)):b}
+        return bandorder
 
 class ColorColor:
     def __init__(self, Opts, pm):
@@ -83,8 +95,8 @@ class ColorColor:
         self.Nr_seen = {i : 0 for i in self.data.trtypes}
         for i,ID in enumerate(self.data.IDs):
             tt_index = int(self.data.trtype_data[i])
-            B1_B0 = []
-            B2_B1 = []
+            B0_B1 = []
+            B1_B2 = []
             times = []
             j0 = 0
             found0 = False
@@ -130,16 +142,16 @@ class ColorColor:
                                                             if B3 > self.mag_lim[ self.bands[3] ]:
                                                                 found1 = True
                                                             else:
-                                                                B2_B1.append(B3 - B2)
-                                                                B1_B0.append(B1 - B0)
+                                                                B1_B2.append(B2 - B3)
+                                                                B0_B1.append(B0 - B1)
                                                                 times.append(self.data.time_data[i][entry])
                                                                 found3 = True
                                                                 found2 = True
                                                                 found1 = True
                                                 ####
                                                 else:
-                                                     B2_B1.append(B2 - B1)
-                                                     B1_B0.append(B1 - B0)
+                                                     B1_B2.append(B1 - B2)
+                                                     B0_B1.append(B0 - B1)
                                                      times.append(self.data.time_data[i][entry])
                                                      found2 = True
                                                      found1 = True
@@ -151,10 +163,10 @@ class ColorColor:
                 if j0 == len(obs_bands):
                     found0 = True
                     break
-            rgbacolors = np.zeros((len(B1_B0),4))
+            rgbacolors = np.zeros((len(B0_B1),4))
             rgbacolors[:,:3] = DotColor[tt_index][:3]
 
-            for m in range(len(B1_B0)):
+            for m in range(len(B0_B1)):
                 for a in range(len(self.Alphas)):
                     if self.Obstimes[a] == times[m]: 
                         rgbacolors[m,3] = self.Alphas[a]
@@ -163,10 +175,10 @@ class ColorColor:
             if self.data.trtypenr[tt_index] == 'SNIa': 
                 Zor = 0      #Put SNIa in the background: they are often very numerous
             else: Zor = tt_index + 1
-            if len(B2_B1) > 0:
+            if len(B1_B2) > 0:
                 self.Nr_seen[tt_index] += 1   #One transient of this type was seen.
             #plt.scatter(BandM1[See] - BandM2[See], BandM0[See] - BandM1[See], color = rgbacolors, edgecolors = (1,1,1,0), s = Size, zorder = Zor)  
-            plt.scatter(B2_B1, B1_B0, color = rgbacolors, edgecolors = (1,1,1,0), s = Size, zorder = Zor)  
+            plt.scatter(B1_B2, B0_B1, color = rgbacolors, edgecolors = (1,1,1,0), s = Size, zorder = Zor)  
 
         legendhandles = []
         

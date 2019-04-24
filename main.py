@@ -102,7 +102,7 @@ def getOpts():
     parser.add_argument("-f", "--file", help="File with observation times. defaults to the obstimes in params.py.")
     parser.add_argument("-l", "--offline", action='store_true', help ="Execute the calculations fully offline. This usually takes a lot longer!")
     parser.add_argument("-d", "--nodust", action='store_true', help ="Exclude dust in the calculations")
-    parser.add_argument("-c", "--colorsys", choices = ["AB", "Vega", "ABVega"], default = 'AB', help="Color system to use. ABVega will return UBVRI measurements in Vega and ugriz measurements in AB. Default: AB")
+    parser.add_argument("-c", "--colorsys", choices = ["AB", "Vega", "ABVega"], default = 'AB', help="Color system to use. ABVega will return UBVRI measurements in Vega and ugriz measurements in AB. The other options return all measurements in either AB or Vega Default: ABVega")
     parser.add_argument("-o", "--output", help="Output file. Defaults to the outputfile in params.py")
     parser.add_argument("-O", "--option", nargs = '*', help="Execute an extra function after the generation of transients. Choose either 'Animate' or 'ColorColor'")
     parser.set_defaults(feature=True)
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     [-p] [--params]   Params file to use. default:params.py
     [-l] [--offline]  Execute offline
     [-d] [--nodust]   Exlude dust
-    [-c] [--colorsys] Color system to use. ABVega will return UBVRI measurements in Vega and ugriz measurements in AB. Default='AB'
+    [-c] [--colorsys] Color system to use. ABVega will return UBVRI measurements in Vega and ugriz measurements in AB. Default='ABVega'
     [-h] [--help]     Print help function
     [-O] [--output]   Output file. Defaults to the outputfile in params.py
     [-o] [--option]   'Animate' and/or 'ColorColor' 
