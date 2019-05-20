@@ -26,16 +26,16 @@ mag_limit      = {'U':21.0, 'B':21.0, 'V':21.0, 'R':21.0, 'I':21.0, 'u':20.9, 'g
 mag_resolution = 0.1	
 aperture_DEC   = 1.64317
 aperture_RA    = 1.64317
-color_system   = 'blackgem'#'blackgem'
+color_system   = 'UBVRI'#'blackgem'
 
 
 
 # Transients to use. Set to zero to leave out of calculation.
 
 use_nova     = 0
-use_UGem     = 1
+use_UGem     = 0
 use_SUUMa    = 1
-use_ZCam     = 1
+use_ZCam     = 0
 use_SNIa     = 0
 use_SNIb     = 0
 use_SNIc     = 0
@@ -43,7 +43,7 @@ use_SNIIP    = 0
 use_SNIIL    = 0
 use_SNIInL   = 0
 use_SNIInP   = 0
-use_M3       = 0
+use_M3       = 1
 use_M3_5     = 0
 use_M4       = 0
 use_kilonova = 1	 #Should have no entry in dataTransients.dat or peakmagsTransients.dat

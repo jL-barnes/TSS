@@ -32,8 +32,8 @@ class AnData:
         typesList = f.readline().split()
         hdr = f.readline().split()
         f.close()
-        Data = np.genfromtxt( datafile, skip_header =2 , dtype = [int, int, float, float, float, float, ('string','S5')])
-        self.obs_bands = np.array([row[6] for row in Data])
+        Data = np.genfromtxt( datafile, skip_header =2 , dtype = [int, int, float, float, float, float, float, ('string','S5')])
+        self.obs_bands = np.array([row[7] for row in Data])
         data = np.array( [[row[0], row[1], row[2], row[3], row[4], row[5]] 
                           for row in Data] )
         if np.array(data).shape == (6,):

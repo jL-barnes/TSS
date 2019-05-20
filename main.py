@@ -19,6 +19,7 @@ def main(Opts, pm):
     ###################################
     # Set up transient templates
     ###################################
+
     Set_of_transients = []
     for framenr in range(observingRun.Nframes):
         transientZoo = trns.TransientSet( observingRun, framenr )
@@ -30,7 +31,8 @@ def main(Opts, pm):
         ###################################
         transientZoo.populate()
         Set_of_transients.append(transientZoo)
-
+    
+    #Generate a kilonova
     if pm['use_kilonova']:
         SKN = np.random.randint(0,len(Set_of_transients))
         Set_of_transients[SKN].inject_kilonova( pm['k_tMerge'], pm['k_dist'],\
@@ -38,6 +40,7 @@ def main(Opts, pm):
                                                 observingRun, SKN )
         print "Injecting a kilonova"
     tuc = time.time()
+    print "Time for generation", tuc - tic
 
     ###################################
     # Make observations
@@ -93,8 +96,6 @@ def main(Opts, pm):
             print "Neither 'Animate' or 'ColorColor' was given as an option. Saving the results to ", pm['outfile']
     else:
         print "No transients were found, exiting simulation..."
-
-
 
 def getOpts():
     parser = argparse.ArgumentParser(description='Simulate the transient sky')

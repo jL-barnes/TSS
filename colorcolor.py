@@ -18,8 +18,8 @@ class CCData:
         print hdr
         data = np.genfromtxt( datafile, skip_header =2, usecols = (0,1,2) )
         #print data
-        Data = np.genfromtxt( datafile, skip_header =2 , dtype = [int, int, float, float, float, float, ('string','S5')])
-        self.bandObs = np.array([row[6] for row in Data])
+        Data = np.genfromtxt( datafile, skip_header =2 , dtype = [int, int, float, float, float, float, float, ('string','S5')])
+        self.bandObs = np.array([row[7] for row in Data])
         for C in Opts.colors:
             uniq_bands = np.unique(self.bandObs)
             if C not in uniq_bands:

@@ -17,9 +17,8 @@ emptyval = 1000.0
 
 class Green_Extinction:
     def __init__(self, Xtr_dust, bands, colorscheme, offline, RA_lo, RA_hi, DEC_lo, DEC_hi):
-        self.Name        = "Green et al. (2018)"
+        self.Name        = "Green et al. (2019)"
         self.Ang_Res     = 0.05667	#deg (=3.4 arcmin) = minimum angular res.
-        self.conv        = 0.884	    #Conversion factor: E(B-V) = 0.884*alpha
         self.bands       = bands
         self.RA_lo       = RA_lo
         self.RA_hi       = RA_hi
@@ -69,8 +68,6 @@ class Green_Extinction:
         We add data points for a distance modulus of zero (we assume 
          the EBV at d=0 to be zero)
         And finally we Interpolate this grid with linear interpolation
-        We have to convert the output of the Green dust query (alpha) to E(B-V)
-         by multiplying it with self.conv
         If one samples a coordinate outside the interpolation 
          boundaries, it will return the value -100 
         """
@@ -90,7 +87,7 @@ class Green_Extinction:
         DQ = Greendustquery(RA,DEC, self.offline, Mode = 'galactic')	
 
         D = [0]		#Distance modulus zero isn't included in query
-        D.extend(np.linspace(4.,19.,31))    #The distance moduli as queried
+        D.extend(np.linspace(4.,19.,120))    #The distance moduli as queried
         Dlen = len(D)
 
         EBV = np.zeros((len(ra), len(dec), Dlen))
@@ -98,7 +95,7 @@ class Green_Extinction:
             for j in range( len(ra) ):
                 Onecoord = [0]			#The EBV at d=0 at one coordinate
                 Onecoord.extend(DQ[i+j])	#extend with EBV at other ds
-                EBV[j,i,:] = self.conv * np.array(Onecoord)
+                EBV[j,i,:] = np.array(Onecoord)
 
         self.queried = True
         
@@ -173,7 +170,7 @@ class Schlegel_Extinction:
 
 
 class Schultheis_Extinction:
-    def __init__(self, Xtr_dust, colorscheme, bands, RA_lo, RA_hi, DEC_lo, DEC_hi):
+    def __init__(self, Xtr_dust, bands, colorscheme, offline, RA_lo, RA_hi, DEC_lo, DEC_hi):
         self.Name        = "Schultheis et al. (2014)"
         self.Ang_Res     = 0.1	#deg (=6 arcmin)
         self.bands       = bands
@@ -187,26 +184,33 @@ class Schultheis_Extinction:
         self.Xtr_dust    = Xtr_dust
         self.RV_JK       = fc.RV_JK[colorscheme]
         self.RV_JK.update(fc.RV_JK['UBVRI'])
+        self.useGreen    = False
+        if InGreenBoundary(RA_lo, RA_hi, DEC_lo, DEC_hi):
+            self.useGreen = True
+            self.Green = Green_Extinction(Xtr_dust, bands, colorscheme, offline, RA_lo, RA_hi, DEC_lo, DEC_hi)
+
 
     def Sample_extinction(self, ra, dec, D):
         """
         Sample the 3D dust grid to obtain the EJK at
          the location of the transient
         This is then converted to an extinction
-        The result might be either '-100' or 'nan'. Don't worry
-         this will be fixed later
+        The result might be either '-100' or 'nan'. In that case we sample
+         the Green extinction map if possible
         Input:
         ra: RA-coordinate in degrees
         dec: DEC-coordinate in degrees
         D: distance to transient in kpc
         """
-        D = D 
         lon, lat = astCoords.convertCoords( "J2000", "GALACTIC", ra, dec, 2000 )
         if lon > 180: lon -= 360	#Here lon runs from -180 to 180
         A = {}
         EJK = self.f( [lon, lat, D] )
         if EJK == emptyval or math.isnan(EJK):	#Out of intpol range
-            A = self.Xtr_dust.Sample_extinction(ra, dec, D)
+            if self.useGreen:
+                A = self.Green.Sample_extinction(ra, dec, D)
+            else:
+                A = self.Xtr_dust.Sample_extinction(ra, dec, D)
         else:
             for color in self.bands:
                 A[color] = float(EJK) * self.RV_JK[color] 
@@ -311,7 +315,7 @@ def InGreenBoundary(RA_lo, RA_hi, DEC_lo, DEC_hi):
     RAs  = np.array([RA_lo, RA_lo, RA_hi, RA_hi]) * u.deg
     DECs = np.array([DEC_lo, DEC_hi, DEC_lo, DEC_hi]) * u.deg
     Coords = SkyCoord(RAs, DECs, frame='icrs')
-    Bayestar = bayestar.BayestarWebQuery(version='bayestar2017')
+    Bayestar = bayestar.BayestarWebQuery(version='bayestar2019')
     DQ   = Bayestar(Coords, mode='best')
     return np.any(DQ > 0.)
 #%%
@@ -332,6 +336,7 @@ def InSchultheisBoundary(RA_lo, RA_hi, DEC_lo, DEC_hi):
         if lonbool and latbool:
             inSchultheis = True
             break
+    print "in Schultheis"
     return inSchultheis
 
 def Greendustquery(ra, dec, offline, Mode='galactic'):
@@ -347,12 +352,12 @@ def Greendustquery(ra, dec, offline, Mode='galactic'):
     Total_len = len(ra)
     if offline:
         if Mode == 'galactic':
-            Query = bayestar.BayestarQuery(version='bayestar2017')
+            Query = bayestar.BayestarQuery(version='bayestar2019')
         elif Mode == 'extragalactic':
             Query = sfd.SFDQuery()    
     else:
         if Mode == 'galactic':
-            Query = bayestar.BayestarWebQuery(version='bayestar2017')
+            Query = bayestar.BayestarWebQuery(version='bayestar2019')
         elif Mode == 'extragalactic':
             Query = sfd.SFDWebQuery()
     if Total_len > 5000:

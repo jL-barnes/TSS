@@ -5,10 +5,10 @@ Some telescope filter characteristics
 
 """
 RV_BV is the way a filter reacts to dust extinction. 
-It is the conversion from E(B-V) to an extinction A_b
+It is the conversion from E(B-V)_SFD to an extinction A_b
 It's taken from table 6 (with R_V=3.1) from Schlafly & Finkbeiner (2011)
 http://iopscience.iop.org/article/10.1088/0004-637X/737/2/103#apj398709t6
-RV_JK is the conversion from E(J-K) to E(B-V)
+RV_JK is the conversion from E(J-K) to E(B-V)_SFD
 """
 
 RV_BV = {'UBVRI':   {'U':4.334, 'B':3.626, 'V':2.742, 'R':2.169, 'I':1.505},
@@ -16,7 +16,7 @@ RV_BV = {'UBVRI':   {'U':4.334, 'B':3.626, 'V':2.742, 'R':2.169, 'I':1.505},
          'blackgem':{'u':4.091, 'g':3.277, 'r':2.286, 'i':1.672, 'z':1.230, 'q':2.625},
          'lsst':    {'u':4.145, 'g':3.237, 'r':2.273, 'i':1.684, 'z':1.323, 'y':1.088}
         } 
-RV_JK = { key: { k: RV_BV[key][k] * 1.748 for k in RV_BV[key].keys() } 
+RV_JK = { key: { k: RV_BV[key][k] * 1.748 * 0.884 for k in RV_BV[key].keys() } 
           for key in RV_BV.keys()}
 
 """
