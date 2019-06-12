@@ -297,14 +297,15 @@ class galactic_recur_template( transientTemplate ):
         for lc in self.transients:
             vis_frames = np.array(lc.visibleframes)
             obT = obTimes[vis_frames].flatten()
+            #print "obT", type(obT), obT
             obB = obBands[vis_frames].flatten()
             obT_f = max(obT)
             dts = obT_f - obT
-            radec, mags = self.sample_single_LC( lc, dts, obB, threshold )
+            radec, mags, Qmags = self.sample_single_LC( lc, dts, obB, threshold )
             if len(radec) > 0:
                 self.radec_list.append( radec )
                 self.bandmags_list.append( mags )
-                self.Qmag_list.append(emptyval * np.ones(len(mags)))
+                self.Qmag_list.append(Qmags)
                 self.bandbands_list.append( obB )
                 self.obT_list.append(obT)
         self.bandmags_list = np.array(self.bandmags_list)
@@ -351,14 +352,15 @@ class galactic_recur_template( transientTemplate ):
         dval = lc.LC_Dist
         dist_mod = 5.0 * np.log10( dval*1.0e3 ) - 5.0
         visible = False
+        Qmags = emptyval * np.ones(len(bandMags))
         for i,label, in enumerate(obBands):
             bandMags[i] += dist_mod + lc.Extinction[label]
             if bandMags[i] < threshold[label]: visible = True
         if visible :
-            return [lc.LC_RA, lc.LC_DEC], bandMags
+            return [lc.LC_RA, lc.LC_DEC], bandMags, Qmags
         else:
             self.N_trans -= 1
-            return [],[]
+            return [],[],[]
 
 class SUUMa_template( galactic_recur_template ):
     def __init__( self, tag, trData, obRun ):
@@ -379,7 +381,7 @@ class SUUMa_template( galactic_recur_template ):
         for TYPE in ['normal', 'super']:
             lcdata_up = h5py.File( self.LCFile + '_UBVRI_%s.hdf5' % (TYPE), 'r' )
             lcdata_lo = h5py.File( self.LCFile + '_%s_%s.hdf5' % (colorchoice, TYPE), 'r' )
-            self.BP_outb_amp[TYPE], self.BP_Q_mag[TYPE] = self.Get_outb_amp(lcdata_up)
+            self.BP_outb_amp[TYPE], self.BP_Q_mag[TYPE] = self.Get_outb_amp(lcdata_up, np.append('V',self.bands))
             tms = lcdata_up['times'][:]    #times(UBVRI) = times(ugriz)
             self.BP_t_s[TYPE] = tms[0]
             self.BP_t_e[TYPE] = tms[-1]
@@ -424,8 +426,10 @@ class SUUMa_template( galactic_recur_template ):
     def get_all_normal_bbs( self, tsample, obbands, DN ):
         bnds = []
         for i,bandLabel in enumerate(obbands):
-            this_bb = ( self.broadbands_normal[bandLabel]( tsample[i] ) * 
-                       DN.A_no / self.BP_outb_amp['normal']  
+            outb_amp_old = self.BP_outb_amp['normal']
+            scale = ( (DN.A_no + outb_amp_old[bandLabel] - outb_amp_old['V']) /
+                      (outb_amp_old[bandLabel]) )
+            this_bb = ( self.broadbands_normal[bandLabel]( tsample[i] ) * scale
                        + DN.Q_mag[bandLabel] )
             if this_bb > DN.Q_mag[bandLabel]:
                 this_bb = DN.Q_mag[bandLabel]
@@ -434,24 +438,25 @@ class SUUMa_template( galactic_recur_template ):
     def get_all_super_bbs( self, tsample, obbands, DN ):
         bnds = []
         for i,bandLabel in enumerate(obbands):
-            this_bb = ( self.broadbands_super[bandLabel]( tsample[i] ) * 
-                       DN.A_so / self.BP_outb_amp['super']  
+            outb_amp_old = self.BP_outb_amp['super']
+            scale = ( (DN.A_no + outb_amp_old[bandLabel] - outb_amp_old['V']) /
+                      (outb_amp_old[bandLabel]) )
+            this_bb = ( self.broadbands_super[bandLabel]( tsample[i] ) * scale
                        + DN.Q_mag[bandLabel] )
             if this_bb > DN.Q_mag[bandLabel]:
                 this_bb = DN.Q_mag[bandLabel]
             bnds.append(this_bb)
         return np.array(bnds)
+    """temp:::::   (entire function is temporary)
     def sample_all_LCs( self, obTimes, obBands, threshold ):
-        """temp:::::   (entire function is temporary)
-        print obTimes, "obtimes"
+        #Temppppp
+        #print obTimes, "obtimes"
         #obBands = np.array(['V' for i in range(3650)])
-        obBands = [['u', 'g', 'r', 'i'] for i in range(3650/4)]
-        obBands = np.array(obBands).ravel()
-        obBands = np.append(obBands, ['g', 'r'])
-        obTimes = np.linspace(0,365. * 24. * 60. * 60., 3650)
-        """
-        """temp:::::
-        """
+        #obBands = [['u', 'g', 'r', 'i'] for i in range(3650/4)]
+        #obBands = np.array(obBands).ravel()
+        #obBands = np.append(obBands, ['g', 'r'])
+        #obTimes = np.linspace(0,365. * 24. * 60. * 60., 3650)
+
         for lc in self.transients:
             vis_frames = np.array(lc.visibleframes)
             obT = obTimes[vis_frames].flatten()
@@ -467,6 +472,7 @@ class SUUMa_template( galactic_recur_template ):
                 self.bandbands_list.append( obB )
                 self.obT_list.append(obT)
         self.bandmags_list = np.array(self.bandmags_list)
+    """
     def sample_single_LC(self, lc, tvals, obBands, threshold ):
         DN = DwarfNova(self.type, self.P_c_s, self.P_c_loc, self.P_c_scale,
                        self.quiescentmag, self.bands)
@@ -662,18 +668,22 @@ class SUUMa_template( galactic_recur_template ):
             else:
                 return outb_interval
 
-    def Get_outb_amp( self, lcdata):
+    def Get_outb_amp( self, lcdata, bands):
         """
-        A little function that finds the outburst amplitude
+        A little function that finds the outburst amplitude for every band
         It also calculates the quiescence magnitude in the V-band of the light
          curve data.
-        returns: the outburst amplitude and the quiescence mag in V
+        returns: the outburst amplitude in every band
+                  and the quiescence mag in V
         """
         if 'V' not in lcdata.keys(): 
             raise TypeError("There is no V-band data in your UBVRI light curve file for %s" % (self.tag))
         Q_V_mag = max(lcdata['V'][:])
-        amp = lcdata['V'][:] - Q_V_mag
-        return -min(amp), Q_V_mag
+        amp = {}
+        for band in bands:
+            Q_mag = max(lcdata[band][:])
+            amp[band] = -min(lcdata[band][:] - Q_mag)
+        return amp, Q_V_mag
         
         
 class UGem_template( SUUMa_template ):
@@ -702,9 +712,10 @@ class ZCam_template( SUUMa_template ):
         self.BP_t_s  = {}
         self.BP_t_e  = {}
         for TYPE in ['normal', 'super', 'rise', 'decay']:
+            print "file", self.LCFile + '_UBVRI_%s.hdf5' % (TYPE), 'r'
             lcdata_up = h5py.File( self.LCFile + '_UBVRI_%s.hdf5' % (TYPE), 'r' )
             lcdata_lo = h5py.File( self.LCFile + '_%s_%s.hdf5' % (colorchoice, TYPE), 'r' )
-            self.BP_outb_amp[TYPE], self.BP_Q_mag[TYPE] = self.Get_outb_amp(lcdata_up)
+            self.BP_outb_amp[TYPE], self.BP_Q_mag[TYPE] = self.Get_outb_amp(lcdata_up, np.append('V',self.bands))
             tms = lcdata_up['times'][:]    #times(UBVRI) = times(ugriz)
             self.BP_t_s[TYPE] = tms[0]
             self.BP_t_e[TYPE] = tms[-1]
@@ -761,15 +772,12 @@ class ZCam_template( SUUMa_template ):
         self.BP_d_decay = self.BP_t_e['decay'] - self.BP_t_s['decay'] #in s
         self.Max_obs_D     =  Maximum_observing_distance(self.mag_lim, self.peak_mags, self.std_mag_R)
     def get_all_standstill_bbs( self, tsample, obbands, DN, D_ss, tO):
+        #print "hallo", D_ss, DN.D_ss
         bnds = []
-        #print DN.Q_mag['V']
-        #print self.broadbands_rise['V']( tsample )
         rise =  ( self.broadbands_rise['V']( tsample ) * 
-                       DN.A_no / self.BP_outb_amp['normal']  
+                       DN.A_no / self.BP_outb_amp['normal']['V']  
                        + DN.Q_mag['V'] )
-        A = np.array(rise)
-        B = np.array(tsample)
-        lowvalue = ( emptyval * DN.A_no / self.BP_outb_amp['normal']  
+        lowvalue = ( emptyval * DN.A_no / self.BP_outb_amp['normal']['V']  
                        + DN.Q_mag['V'] )
         if np.any(rise < lowvalue):
             endrise = tsample[rise < lowvalue][-1]
@@ -783,30 +791,39 @@ class ZCam_template( SUUMa_template ):
                 return emptyval * np.ones(len(tsample))
         #d_till_decay is the duration of the standstill up till the decay
         # phase in the blueprint ``time-frame''
-        #endrise = self.BP_d_rise
         d_till_decay = self.BP_D_no / DN.D_no * D_ss + (endrise / 8.64e4)
-        #print "hi", A[A < emptyval], B[A < emptyval ]
-        #print "emptyval", emptyval, A[0], A[-1], DN.Q_mag['V'], len(A[A < emptyval]), len(A)
-        #print "self.BP_D_no / DN.D_no * D_ss + endrise", self.BP_D_no,DN.D_no,DN.D_ss,endrise / 8.64e4, d_till_decay, tsample[0] / 8.64e4, tsample[-1] / 8.64e4, tO
-        #print (tsample - d_till_decay * 8.64e4)[tsample > d_till_decay * 8.64e4]
         for i,bandLabel in enumerate(obbands):
-            this_bb = ( self.broadbands_rise[bandLabel]( tsample[i] ) * 
-                       DN.A_no / self.BP_outb_amp['normal']  
-                       + DN.Q_mag[bandLabel] )
+            outb_amp_old = self.BP_outb_amp['normal']
             
-            #print "d_till_decay", d_till_decay
-            #print tsample[i], self.BP_d_rise, d_till_decay * 8.64e4, DN.A_no, self.BP_A_ss[bandLabel], DN.Q_mag[bandLabel]
+            scale = ( (DN.A_no + outb_amp_old[bandLabel] - outb_amp_old['V']) /
+                      (outb_amp_old[bandLabel]) )
+            this_bb = ( self.broadbands_rise[bandLabel]( tsample[i] ) * scale
+                       + DN.Q_mag[bandLabel] )
             if tsample[i] > endrise and tsample[i] < d_till_decay * 8.64e4:
-                this_bb = self.BP_A_ss[bandLabel] * DN.A_no / self.BP_outb_amp['normal']  + DN.Q_mag[bandLabel]
+                this_bb = self.BP_A_ss[bandLabel] * scale + DN.Q_mag[bandLabel]
             if tsample[i] > d_till_decay * 8.64e4 :
-                this_bb = ( self.broadbands_decay[bandLabel]( tsample[i] - d_till_decay * 8.64e4 ) * 
-                           DN.A_no / self.BP_outb_amp['normal']  
+                time = tsample[i] - d_till_decay * 8.64e4
+                this_bb = ( self.broadbands_decay[bandLabel]( time ) * scale
                            + DN.Q_mag[bandLabel] )
             if this_bb > DN.Q_mag[bandLabel]:
                 this_bb = DN.Q_mag[bandLabel]
             bnds.append(this_bb)
+        #print "SSmag", self.BP_A_ss['I'] * scale + DN.Q_mag['I']
+        #print obbands[np.array(bnds) < -20.]
         return np.array(bnds)
     def sample_single_LC(self, lc, tvals, obBands, threshold ):
+        """
+        #obBands = np.array(['V' for i in range(3650)])
+        obBands = [['U','B', 'V', 'R', 'I'] for i in range(3650/5)]
+        obBands = np.array(obBands).ravel()
+        #obBands = np.append(obBands, ['R', 'I'])
+        obTimes = np.linspace(0,365. * 24. * 60. * 60., 3650)
+        tvals = max(obTimes) - obTimes
+        """
+        """
+        """
+        
+        
         DN = DwarfNova(self.type, self.P_c_s, self.P_c_loc, self.P_c_scale,
                        self.quiescentmag, self.bands)
         max2 = DN.Get_max_lookbacktime(D_rise = self.BP_d_rise / 8.64e4, 
@@ -824,13 +841,13 @@ class ZCam_template( SUUMa_template ):
                                                     D_ss = outblen_ss  )}
         
         D_ss     = [DN.D_ss]
-        DN.Change_superoutburst()
+        DN.Change_standstill()
         next_ss_outb = t_OutBurst + DN.P_ss
         
         t_OutBurst += outb_interval[ init_outbtype ]
         timeOuts = [t_OutBurst]
         typeOuts = [init_outbtype]
-        
+        t_since_so = 0
         
         if DN.P_sc > 2 * DN.P_c:
             nr_no_outb = 0
@@ -839,14 +856,19 @@ class ZCam_template( SUUMa_template ):
             # step forward in time
             while t_OutBurst < 1.1 * max(tvals) / 8.64e4:
                 outbtype = self.Get_outbtype(nr_no_outb, DN.nr_no_per_so)
+                if t_since_so > DN.P_sc: outbtype = 1
                 if t_OutBurst + outb_interval[ outbtype ] > next_ss_outb:
                     outbtype = 2
-                if outbtype == 0:   nr_no_outb += 1
+                if outbtype in [1,2]:
+                    t_since_so = 0
+                if outbtype == 0:  
+                    nr_no_outb += 1
+                    t_since_so += outb_interval[ outbtype ]
                 elif outbtype == 1: nr_no_outb = 0
                 t_OutBurst += outb_interval[ outbtype ]
                 D_ss.append(DN.D_ss)
                 if outbtype == 2:
-                    DN.Change_superoutburst()
+                    DN.Change_standstill()
                     outblen_ss = DN.D_rise + DN.D_decay + DN.D_ss
                     outb_interval[2] = self.Get_outbinterval( DN, DN.minrecurt, 
                                                               2, D_ss = outblen_ss)
@@ -861,19 +883,24 @@ class ZCam_template( SUUMa_template ):
              # step forward in time
             while t_OutBurst < 1.1 * max(tvals) / 8.64e4:
                 outbtype_so = self.Get_outbtype(nr_so_outb, DN.nr_so_per_no)
+                if t_since_so > DN.P_sc: outbtype_so = 0
                 if t_OutBurst + outb_interval[ outbtype_so ] > next_ss_outb:
                     outbtype_so = 2
-                if outbtype_so == 1: outbtype = 0
+                if outbtype in [0,2]:
+                    t_since_so = 0
+                if outbtype_so == 1: 
+                    outbtype = 0
                 elif outbtype_so == 0: 
                     outbtype = 1
                     nr_so_outb = 0
+                    t_since_so += outb_interval[ outbtype ]
                 elif outbtype_so == 2:
                     outbtype = 2
                     nr_so_outb = 0
                 t_OutBurst += outb_interval[ outbtype ]
                 D_ss.append(DN.D_ss)
                 if outbtype == 2:
-                    DN.Change_superoutburst()
+                    DN.Change_standstill()
                     outblen_ss = DN.D_rise + DN.D_decay + DN.D_ss
                     outb_interval[2] = self.Get_outbinterval( DN, DN.minrecurt, 
                                                               2, D_ss = outblen_ss)
@@ -906,7 +933,7 @@ class ZCam_template( SUUMa_template ):
                         t_OutBurst += DN.P_sc   
                 elif outbtype == 2:
                     t_OutBurst += outb_interval[2]
-                    DN.Change_superoutburst()
+                    DN.Change_standstill()
                     outblen_ss = DN.D_rise + DN.D_decay + DN.D_ss
                     outb_interval[2] = self.Get_outbinterval( DN, DN.minrecurt, 
                                                               2, D_ss = outblen_ss)
@@ -960,30 +987,38 @@ class ZCam_template( SUUMa_template ):
                 bandMags[i5] = np.min([these_bandMags[i5],bandMags[i5]], axis=0)
                 #bandMags[i5] = these_bandMags[i5]
         """temp:::::
-        print "P_c, P_sc, P_ss", DN.P_c, DN.P_sc, DN.P_ss
         print "A_no, A_so", DN.A_no, DN.A_so
-        print "D_no, D_so, D_ss", DN.D_no, DN.D_so, DN.D_ss
         print "peakmags", self.peak_mags['g']
         print self.BP_outb_amp
-        print 365 - timeOuts
-        print typeOuts
-        import matplotlib.pyplot as plt
         with open('temp', 'w') as file:
             for A in bandMags:
                 file.write(str(A))
                 file.write('\n')
         file.close()
-        BoolB = obBands == 'u'
-        BoolV = obBands == 'g'
-        BoolR = obBands == 'r'
-        BoolI = obBands == 'i'
+        #print 365 - timeOuts
+        #print typeOuts
+        import matplotlib.pyplot as plt
+        print "Distance, Qmag", lc.LC_Dist, DN.quiescent_mag
+        print "P_c, P_sc, P_ss", DN.P_c, DN.P_sc, DN.P_ss
+        print "D_no, D_so, D_ss", DN.D_no, DN.D_so, DN.D_ss
+        print DN.Q_mag
+        BoolU = obBands == 'U'
+        BoolB = obBands == 'B'
+        BoolV = obBands == 'V'
+        BoolR = obBands == 'R'
+        BoolI = obBands == 'I'
         tvals = np.array(tvals)
-        plt.plot(365 - tvals[BoolB] / 8.64e4, bandMags[BoolB], color = '#0028ff')
-        plt.plot(365 - tvals[BoolV] / 8.64e4, bandMags[BoolV], color = '#a6ff00')
-        plt.plot(365 - tvals[BoolR] / 8.64e4, bandMags[BoolR], color = '#ff0000')
-        plt.plot(365 - tvals[BoolI] / 8.64e4, bandMags[BoolI], color = '#c20000')
-        plt.gca().invert_yaxis()
-        plt.show()
+        dist_mod = 5.0 * np.log10( lc.LC_Dist*1.0e3 ) - 5.0
+        if np.any(bandMags[BoolI] + dist_mod < -20.):
+            #print bandMags[BoolI] + dist_mod
+            #print 365 - tvals[BoolB] / 8.64e4, bandMags[BoolB]
+            plt.plot(365 - tvals[BoolU] / 8.64e4, bandMags[BoolU] + dist_mod, color = '#610061', label='U')
+            plt.plot(365 - tvals[BoolB] / 8.64e4, bandMags[BoolB] + dist_mod, color = '#0028ff', label='B')
+            plt.plot(365 - tvals[BoolV] / 8.64e4, bandMags[BoolV] + dist_mod, color = '#a6ff00', label='V')
+            plt.plot(365 - tvals[BoolR] / 8.64e4, bandMags[BoolR] + dist_mod, color = '#ff0000', label='R')
+            plt.plot(365 - tvals[BoolI] / 8.64e4, bandMags[BoolI] + dist_mod, color = '#c20000', label='I')
+            plt.gca().invert_yaxis()
+            plt.show()
                     
         """
 
@@ -1018,16 +1053,15 @@ class Mdwarf_template( transientTemplate ):
         qs                 = vals[11:]
         last_logE_ac       = logE_max_ac - (logE_max_ac - logE_min_ac)/self.Ebins
                              #last_logE is the the start of the last logE-bin
-        last_logE_in       = logE_max_in - (logE_max_in - logE_min_in)/self.Ebins
-        
+        last_logE_in       = logE_max_in - (logE_max_in - logE_min_in)/self.Ebins        
         self.dlogE_act     = np.linspace(logE_min_ac, last_logE_ac, self.Ebins +2)
         self.dlogE_ina     = np.linspace(logE_min_in, last_logE_in, self.Ebins +2)
-        self.Lq            = {'U':qs[0],'B':qs[1],'V':qs[2],'R':qs[3],'I':qs[4],'J':qs[5],'H':qs[6],'K':qs[7],'u':qs[8],'g':qs[9],'r':qs[10],'i':qs[11],'z':qs[12]}
-        #self.Flare_energy  = float( trData[12] )
+        self.Lq            = {'U':qs[0],'B':qs[1],'V':qs[2],'R':qs[3],'I':qs[4],'J':qs[5],'H':qs[6],'K':qs[7],'u':qs[8],'g':qs[9],'r':qs[10],'i':qs[11],'z':qs[12],'q':qs[13],'y':qs[14]}
         self.Epk           = {}
         self.mag_resolution= obRun.mag_resolution
         self.broadbands_rise  = {}
         self.broadbands_decay = {}
+        self.LC_time = {'decay': self.deltaT_LC}
     def get_blueprints( self, c, dtObs ):
         Nr_of_years = 1.	#Recurrent transient => Nr. of transients does not depend on 
                                 #observation time
@@ -1041,7 +1075,7 @@ class Mdwarf_template( transientTemplate ):
                 if self.canSee_LC( newLC ):
                     _Coords = (newLC.LC_RA, newLC.LC_DEC, newLC.LC_Dist)
                     newLC.Extinction = c.Grid.Gal_dust.Sample_extinction(*_Coords)
-                    if self.canSee_LC( newLC):	#Test WITH dust
+                    if self.canSee_LC( newLC):
                         self.transients.append( newLC )
                         self.N_trans += 1
     def setUpLC( self, colorchoice ):
@@ -1050,7 +1084,6 @@ class Mdwarf_template( transientTemplate ):
         self.flux_0.update(fc.flux_0['UBVRI'])
         self.Pk_rise = {band:0 for band in np.append('U',self.bands)}
         self.Pk_decay = {band:0 for band in np.append('U',self.bands)}
-        self.LC_time = {}
         for TYPE in ['rise', 'decay']:
             lcdata_lo = h5py.File( self.LCFile + '_%s_%s.hdf5' % (colorchoice, TYPE), 'r' )
             lcdata_up= h5py.File( self.LCFile + '_UBVRI_%s.hdf5' % (TYPE), 'r' )
@@ -1078,7 +1111,7 @@ class Mdwarf_template( transientTemplate ):
                 elif TYPE == 'decay':
                     self.broadbands_decay[band] = fun
                     self.Pk_decay[band] = np.max(bb)
-                    self.LC_time['decay'] = tms[-1]
+                    #self.LC_time['decay'] = tms[-1]
                 self.Epk[band] = max(self.Pk_rise[band], self.Pk_decay[band])
             if TYPE == 'rise':
                 E_rise = np.trapz(lcdata_up['U'][:], lcdata_up['times'][:])
@@ -1097,7 +1130,7 @@ class Mdwarf_template( transientTemplate ):
         This is done by looking at the maximum energy an Mdwarf can have in
          each filter band and taking the maximum over them.
         """
-        max_energy = self.dlogE_act[-1]
+        max_energy = max(self.dlogE_act[-1], self.dlogE_ina[-1])
         scale      = 10**(max_energy) / self.E_LC
         max_lum = {band:(self.Epk[band] * scale + self.Lq[band]) for band in self.bands}
         maxdist = 0
@@ -1129,6 +1162,21 @@ class Mdwarf_template( transientTemplate ):
         return np.array(bnds)
     def sample_all_LCs( self, obTimes, obBands, threshold ):
         # total time for observation in hours
+        """temp:::::
+        print obTimes, "obtimes"
+        #obBands = [['U', 'B', 'V', 'R', 'I'] for i in range(10000/5)]
+        #obTimes = [[i,i,i,i,i] for i in np.linspace(0,100. * 24. * 60. * 60., 10000 / 5)]
+        obBands = [['U', 'B', 'V', 'R', 'I'] for i in range(10000/5)]
+        obTimes = [[i,i,i,i,i] for i in np.linspace(0,1. * 24. * 60. * 60., 10000 / 5)]
+        obBands = np.array(obBands).ravel()
+        obTimes = np.array(obTimes).ravel()
+        #obBands = np.append(obBands, ['g', 'r'])
+        #obTimes = np.linspace(0,100. * 24. * 60. * 60., 1000 / 5)
+        for mdwarf in self.transients:
+            mdwarf.visibleframes = np.ones(len(obTimes), dtype=bool)
+        """
+        """
+        """
         tWindow = ( max(obTimes.flatten()) - min(obTimes.flatten()) )/3600.0 
         for mdwarf in self.transients:
             visible = False
@@ -1145,6 +1193,10 @@ class Mdwarf_template( transientTemplate ):
             P_A = self.aval * np.exp( -self.bval * abs(hZ) )  
             ztest = np.random.random()
             if ztest <= P_A: active = True
+
+
+            #active, hZ = True, 1.
+
             if active: 
                 alf = self.alf_ac + self.da_dz * abs(hZ) / 1.e3	#da_dz is in kpc^-1
                 bet = self.bet_ac
@@ -1155,18 +1207,19 @@ class Mdwarf_template( transientTemplate ):
                 alf = self.alf_in + self.da_dz * abs(hZ) / 1.e3
                 bet = self.bet_in
                 eBins_l = self.dlogE_ina
-                eBins_m = self.dlogE_act + 0.5 * (eBins_l[1] - eBins_l[0])
+                eBins_m = self.dlogE_ina + 0.5 * (eBins_l[1] - eBins_l[0])
             #Determine Flare Frequency
             cum_ne = tWindow * np.power(10.0, alf) * np.power(10.0, bet*eBins_l)
             #print alf, bet, "cum_ne", cum_ne, "eBins_l", eBins_l
             #cum_ne is cumulative. We need to decumulate it:
             ne = [cum_ne[i] - cum_ne[i+1] for i in range(self.Ebins +1)]
-            ne = np.array(ne)
-            z = np.random.random(self.Ebins + 1)  #Round probabilities off to integers
-            cond = z < ne - ne.astype(int)
-            ne[cond] +=1
-            nFlares = ne.astype(int)
+            #ne = np.array(ne)
+            #z = np.random.random(self.Ebins + 1)  #Round probabilities off to integers
+            #cond = z < ne - ne.astype(int)
+            #ne[cond] = 1
+            #nFlares = ne.astype(int)
             #print nFlares
+            nFlares = geometricP(ne)
             
             if max( nFlares ) < 1: 
                 self.N_trans -=1
@@ -1193,13 +1246,27 @@ class Mdwarf_template( transientTemplate ):
                         visible = True
                 if visible:
                     """
-                    Boolarray = np.array(obB) == 'u'
-                    ubands = maglist[Boolarray]
+                    print mdwarf.Extinction, mdwarf.LC_Dist, mdwarf.LC_RA, mdwarf.LC_DEC
                     import matplotlib.pyplot as plt	#plot a single Mdwarf lightcurve
-                    plt.plot(obTimes[Boolarray], ubands)
+                    BoolU = obBands == 'U'
+                    BoolB = obBands == 'B'
+                    BoolV = obBands == 'V'
+                    BoolR = obBands == 'R'
+                    BoolI = obBands == 'I'
+                    tvals = np.array(obTimes)
+                    plt.plot(tvals[BoolI] / 8.64e4 * 24., maglist[BoolI], color = '#c20000', linewidth=2, label='I')
+                    plt.plot(tvals[BoolR] / 8.64e4 * 24., maglist[BoolR], color = '#ff0000', linewidth=2, label='R')
+                    plt.plot(tvals[BoolV] / 8.64e4 * 24., maglist[BoolV], color = '#a6ff00', linewidth=2, label='V')
+                    plt.plot(tvals[BoolB] / 8.64e4 * 24., maglist[BoolB], color = '#0028ff', linewidth=2, label='B')
+                    plt.plot(tvals[BoolU] / 8.64e4 * 24., maglist[BoolU], color = '#610061', linewidth=2, label='U')
+                    plt.xlabel('Time (days)')
+                    plt.ylabel('Apparent magnitude')
+                    plt.legend()
                     plt.gca().invert_yaxis()
                     plt.show()
                     """
+
+
                     self.radec_list.append([ mdwarf.LC_RA, mdwarf.LC_DEC ])
                     self.bandmags_list.append( maglist )   
                     self.Qmag_list.append(Qmaglist)
@@ -1217,6 +1284,7 @@ class Mdwarf_template( transientTemplate ):
             logEU = eF[i]
             trise  = np.power(10.0, np.random.normal(0.31*logEU - 7.6, 0.32))
             tdecay = np.power(10.0, np.random.normal(0.51*logEU - 13., 0.22))
+
             thisE = np.power(10.0, logEU)
             dts = np.random.random( n ) * window
             #generate outbursts that started after t0
@@ -1233,7 +1301,7 @@ class Mdwarf_template( transientTemplate ):
                                   self.get_all_bbs_decay( tSamp_decay, obbands)
                 lumlist += new_flux_rise + new_flux_decay
             dts = np.random.random( n ) * window
-            dts = dts[ dts < self.deltaT_LC * 24.*60.*60.]    #dts in seconds, deltaT_LC in days
+            dts = dts[ dts < (trise + tdecay) * 4. * 24.*60.*60.]
             for j,dt in enumerate(dts):
                 tSamp = obT+dt
                 tr_scale = trise / self.LC_time['rise'] 
@@ -1246,6 +1314,8 @@ class Mdwarf_template( transientTemplate ):
                 new_flux_decay  = Energy_scale *\
                                   self.get_all_bbs_decay( tSamp_decay, obbands)
                 lumlist += new_flux_rise + new_flux_decay
+            if logEU > 31.:
+                print logEU, trise/3600., tdecay/3600.
         for i,bnd in enumerate(obbands):   #Add quiescence flux
             if bnd in self.Lq.keys():
                 lumlist[i] += self.Lq[ bnd ]
@@ -1655,6 +1725,7 @@ class DwarfNova:
         if self.D_so < 0 : self.D_so = 0
         self.D_ss = 365.  * np.random.random_sample()  #days
         self.D_rise = 1   #to be changed later
+        
         self.D_decay = 1  #to be changed later
 
         if self.P_sc >  self.P_c:
@@ -1664,21 +1735,30 @@ class DwarfNova:
             self.nr_so_per_no = self.P_c / self.P_sc - 1
             self.nr_no_per_so = 1./self.nr_so_per_no
             
-        self.quiescent_mag = 0     
+        qmag_mu = 6.33 + 1.64 * np.log10(min(self.P_c, self.P_sc))  
+        self.quiescent_mag = np.random.normal(loc = qmag_mu, scale = 0.3) #in V-band
         self.Q_mag = {band: q_mag[band] + self.quiescent_mag 
                  for band in np.append('V',bands)}
         
         self.maxoutblen = max(self.D_no, self.D_so)
         self.maxrecurt  = max(self.P_c, self.P_sc)
         self.minrecurt  = min(self.P_c, self.P_sc)
-    def Change_superoutburst( self ):
+    def Change_standstill( self ):
         """
-        Superoutbursts change in duration and frequency so much more than other
+        Standstills change in duration and frequency so much more than other
          outburst types, that we need to change them after every standstill.
         This is done in this function.
         """
         self.D_ss = (365. - 10.) * np.random.random_sample() + 10.  #days
         self.P_ss = (365.*5. - 10.) * np.random.random_sample() + 10.  #days
+        """
+        temp::::::
+        self.P_ss = 100.
+        self.D_ss = 100.
+        """
+        """
+        temp
+        """
         
     def Get_max_lookbacktime( self, D_rise = 0, D_decay = 0 ):
         """

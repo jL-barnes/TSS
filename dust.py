@@ -336,7 +336,6 @@ def InSchultheisBoundary(RA_lo, RA_hi, DEC_lo, DEC_hi):
         if lonbool and latbool:
             inSchultheis = True
             break
-    print "in Schultheis"
     return inSchultheis
 
 def Greendustquery(ra, dec, offline, Mode='galactic'):

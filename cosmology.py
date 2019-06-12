@@ -35,6 +35,7 @@ class Cosmology:
                                        #fill_value = "extrapolate")
         self.factor = 0.001759927	#The normalization factor for PSI
                                     #Default is the factor for SN Ia
+        self.initialize_redshift_age()
 
     def get_redshift(self, DL):
         """
@@ -48,27 +49,26 @@ class Cosmology:
         return self.fn(DL)
 
 
+    def initialize_redshift_age (self):
+        """
+        Initialize a relation between redshift and age that can later be
+         interpolated
+        """
+        Times = cd.age(self.Zarray, use_flat=False,
+                            omega_M_0 = self.Omega_M, 
+                            omega_lambda_0 = self.Omega_L, 
+                            omega_k_0 = self.Omega_K, 
+                            h= self.H0/1e5 * Mpc) * self.s2yr #Current age of universe
+
+
+        self.z_age = interpolate.interp1d(Times, self.Zarray, fill_value="extrapolate")
+
     def redshift_from_age (self, t):
         """
-        With a flat Lambda-CDM cosmology the function of age to redshift
-         can be simplified with a single analytial function.
         t: the age of the universe at that point
         returns: z: redshift at universe age t
         """
-        return (np.sqrt( self.Omega_M / (1 - self.Omega_M) ) *
-                np.sinh( 1.5 * self.H0 / self.s2yr * t *
-                        np.sqrt(1 - self.Omega_M) ) ) **(-2./3.) -1
-
-    def age_from_redshift (self, z):
-        """
-        With a flat Lambda-CDM cosmology the function of redshift to age
-         can be simplified with a single analytial function.
-        z: a redshift
-        returns: t: age of universe at redshift z
-        """     
-        return ( 2 / (3 * self.H0 / self.s2yr * np.sqrt(1 -  self.Omega_M) ) *
-               np.arcsinh( np.sqrt( (1 - self.Omega_M) / self.Omega_M) *
-                          (1 + z)**(-3./2.) )  )
+        return self.z_age(t)
 
     def SFH (self, T):
         """
@@ -114,23 +114,20 @@ class Cosmology:
         t is an array with ages of the universe at certain redshifts
         Because we want to create an interpolation at the end, we
          need to take the range of universe ages a bit more
-         spaciously, hence the /1.1
+         spaciously, hence the *1.1 in the redshift range.
         Vol_rate is the total (comoving) volumetric transient rate
          It is in integration over the SFH * DTD (in number yr^-1 Mpc^-3)
         """
         self.NM = NM			#Nr. Transients per M_\odot
         self.alpha = alpha		#exp. index of DTD
-        self.tmax = self.age_from_redshift (0) #Current age of universe
         zmin = self.get_redshift(self.MaxDist / 1.e3)
-        print "Calculating cosmology up to z = ", zmin
-        tmin = cd.age(zmin, omega_M_0 = self.Omega_M, 
+        Z = np.linspace(1.1*zmin,0, 1000)
+        t = cd.age(Z, use_flat=False,
+                            omega_M_0 = self.Omega_M, 
                             omega_lambda_0 = self.Omega_L, 
                             omega_k_0 = self.Omega_K, 
-                            h= self.H0/1e5 * Mpc) * self.s2yr
-        t = np.linspace(tmin / 1.1, self.tmax,1000)
-        Z = self.redshift_from_age(t) 
-        Z[-1] = 0.0	#Due to rounding errors Python may calculate 
-                        #the last Z as ~ -1e-16, which creates a problem
+                            h= self.H0/1e5 * Mpc) * self.s2yr #Current age of universe
+        self.tmax = max(t)
 
         if self.alpha == 0.0:	#No DTD
             Vol_rate = self.NM * self.SFH(t)

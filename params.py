@@ -4,7 +4,8 @@ A parameter file for the Transient Sky Simulator
 
 # Parameters for the observation
 
-
+n_RA = 6                 # number of cells in the RA direction
+n_DEC = 6                # number of cells in the DEC direction
 nCells_D = 1000          # number of cells in the distance direction (galactic)
 nCells_xgal = int(1e4)   # number of cells in the distance directions (extragalactic)
 
@@ -34,8 +35,8 @@ color_system   = 'UBVRI'#'blackgem'
 
 use_nova     = 0
 use_UGem     = 0
-use_SUUMa    = 1
-use_ZCam     = 0
+use_SUUMa    = 0
+use_ZCam     = 1
 use_SNIa     = 0
 use_SNIb     = 0
 use_SNIc     = 0
@@ -43,7 +44,7 @@ use_SNIIP    = 0
 use_SNIIL    = 0
 use_SNIInL   = 0
 use_SNIInP   = 0
-use_M3       = 1
+use_M3       = 0
 use_M3_5     = 0
 use_M4       = 0
 use_kilonova = 1	 #Should have no entry in dataTransients.dat or peakmagsTransients.dat

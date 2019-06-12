@@ -85,9 +85,14 @@ class cell:
         This is done by subtracting the volume of a sphere with r=Dmax from a
          sphere with r=Dmin. Then we multiply this by the fraction that the FoV
          is of the full sky and the fraction that the cell is of the FoV
+        cosm is the cosmological factor that converts a volume to a comoving volume
         """
-        Sphere1 = 4./3. * np.pi * np.power( self.DMid - 0.5*self.hD, 3.0 )
-        Sphere2 = 4./3. * np.pi * np.power( self.DMid + 0.5*self.hD, 3.0 )
+        z1 = self.Grid.Cosmo.get_redshift(  self.DMid - 0.5*self.hD / 1.e3 )	#convert to Mpc
+        z2 = self.Grid.Cosmo.get_redshift(  self.DMid + 0.5*self.hD / 1.e3 )	#convert to Mpc
+        cosm1 = np.power( 1 + z1, 3.)
+        cosm2 = np.power( 1 + z2, 3.)
+        Sphere1 = 4./3. * np.pi * np.power( self.DMid - 0.5*self.hD, 3.0 ) * cosm1
+        Sphere2 = 4./3. * np.pi * np.power( self.DMid + 0.5*self.hD, 3.0 ) * cosm2
         Total_vol = Sphere2 - Sphere1
         Fullsky = 129600 / np.pi
         cell_fraction = 1. / (self.Grid.N_RA * self.Grid.N_DEC)
@@ -161,8 +166,8 @@ class grid:
         """
         self.Dmax_MK     = MW.DMax_MW_kpc
         self.Dmax_xgal   = Dmax_xgal
-        self.N_RA        = 6
-        self.N_DEC       = 6
+        self.N_RA        = pm['n_RA']
+        self.N_DEC       = pm['n_DEC']
         self.N_cellsRADEC= self.N_RA * self.N_DEC
         self.FoV         = obRun.aperture_DEC * obRun.aperture_RA
         self.N_DMW       = pm['nCells_D']
@@ -245,6 +250,7 @@ class grid:
     def resize( self, deltaRhoMax, maxIter ):
         """
         This function is deprecated since version 0.9 when cells became non-rectangular
+        Please adjust the number of cells manually in params.py
         """
         ri = 0
         while ri < maxIter:
@@ -466,6 +472,7 @@ class observation:
                 self.Gal_trans = True	#There are galactic transients
             if Galtype in [3,4]:
                 self.Xgal_trans = True	#There are extragalactic transients
+        if self.pm['use_kilonova']: self.Xgal_trans = True
     def Get_Max_observing_D( self ):
         """
         Sets the maximum observing distance to which we need to generate
