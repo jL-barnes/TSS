@@ -27,7 +27,7 @@ mag_limit      = {'U':21.0, 'B':21.0, 'V':21.0, 'R':21.0, 'I':21.0, 'u':20.9, 'g
 mag_resolution = 0.1	
 aperture_DEC   = 1.64317
 aperture_RA    = 1.64317
-color_system   = 'UBVRI'#'blackgem'
+color_system   = 'sdss'#'blackgem'
 
 
 
@@ -36,7 +36,7 @@ color_system   = 'UBVRI'#'blackgem'
 use_nova     = 0
 use_UGem     = 0
 use_SUUMa    = 0
-use_ZCam     = 1
+use_ZCam     = 0
 use_SNIa     = 0
 use_SNIb     = 0
 use_SNIc     = 0

@@ -87,12 +87,15 @@ class cell:
          is of the full sky and the fraction that the cell is of the FoV
         cosm is the cosmological factor that converts a volume to a comoving volume
         """
-        z1 = self.Grid.Cosmo.get_redshift(  self.DMid - 0.5*self.hD / 1.e3 )	#convert to Mpc
-        z2 = self.Grid.Cosmo.get_redshift(  self.DMid + 0.5*self.hD / 1.e3 )	#convert to Mpc
+        if self.DMid > self.Grid.Dmax_MK:
+            z1 = self.Grid.Cosmo.get_redshift(  (self.DMid - 0.5*self.hD) / 1.e3 )	#convert to Mpc
+            z2 = self.Grid.Cosmo.get_redshift(  (self.DMid + 0.5*self.hD) / 1.e3 )	#convert to Mpc
+        else:
+            z1, z2 = 0,0
         cosm1 = np.power( 1 + z1, 3.)
         cosm2 = np.power( 1 + z2, 3.)
-        Sphere1 = 4./3. * np.pi * np.power( self.DMid - 0.5*self.hD, 3.0 ) * cosm1
-        Sphere2 = 4./3. * np.pi * np.power( self.DMid + 0.5*self.hD, 3.0 ) * cosm2
+        Sphere1 = 4./3. * np.pi * np.power( self.DMid - 0.5*self.hD, 3.0 ) / cosm1
+        Sphere2 = 4./3. * np.pi * np.power( self.DMid + 0.5*self.hD, 3.0 ) / cosm2
         Total_vol = Sphere2 - Sphere1
         Fullsky = 129600 / np.pi
         cell_fraction = 1. / (self.Grid.N_RA * self.Grid.N_DEC)
@@ -426,6 +429,7 @@ class observation:
     def set_Colors( self, col ):
         if col.upper() == 'UBVRI': colr = col.upper()
         elif col.lower() == 'sdss': colr = col.lower()
+        elif col.lower() == 'ztf': colr = col.lower()
         elif col.lower() == 'blackgem': colr = col.lower()
         elif col.lower() == 'lsst': colr = col.lower()
         else: raise Exception(col, "is an invalid color system.")

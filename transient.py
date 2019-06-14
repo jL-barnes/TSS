@@ -381,7 +381,7 @@ class SUUMa_template( galactic_recur_template ):
         for TYPE in ['normal', 'super']:
             lcdata_up = h5py.File( self.LCFile + '_UBVRI_%s.hdf5' % (TYPE), 'r' )
             lcdata_lo = h5py.File( self.LCFile + '_%s_%s.hdf5' % (colorchoice, TYPE), 'r' )
-            self.BP_outb_amp[TYPE], self.BP_Q_mag[TYPE] = self.Get_outb_amp(lcdata_up, np.append('V',self.bands))
+            self.BP_outb_amp[TYPE], self.BP_Q_mag[TYPE] = self.Get_outb_amp(lcdata_up, lcdata_lo, np.append('V',self.bands))
             tms = lcdata_up['times'][:]    #times(UBVRI) = times(ugriz)
             self.BP_t_s[TYPE] = tms[0]
             self.BP_t_e[TYPE] = tms[-1]
@@ -668,7 +668,7 @@ class SUUMa_template( galactic_recur_template ):
             else:
                 return outb_interval
 
-    def Get_outb_amp( self, lcdata, bands):
+    def Get_outb_amp( self, lcdata_up, lcdata_lo, bands):
         """
         A little function that finds the outburst amplitude for every band
         It also calculates the quiescence magnitude in the V-band of the light
@@ -676,11 +676,15 @@ class SUUMa_template( galactic_recur_template ):
         returns: the outburst amplitude in every band
                   and the quiescence mag in V
         """
-        if 'V' not in lcdata.keys(): 
+        if 'V' not in lcdata_up.keys(): 
             raise TypeError("There is no V-band data in your UBVRI light curve file for %s" % (self.tag))
-        Q_V_mag = max(lcdata['V'][:])
+        Q_V_mag = max(lcdata_up['V'][:])
         amp = {}
         for band in bands:
+            if band.islower():
+                lcdata = lcdata_lo
+            else:
+                lcdata = lcdata_up
             Q_mag = max(lcdata[band][:])
             amp[band] = -min(lcdata[band][:] - Q_mag)
         return amp, Q_V_mag
@@ -715,7 +719,7 @@ class ZCam_template( SUUMa_template ):
             print "file", self.LCFile + '_UBVRI_%s.hdf5' % (TYPE), 'r'
             lcdata_up = h5py.File( self.LCFile + '_UBVRI_%s.hdf5' % (TYPE), 'r' )
             lcdata_lo = h5py.File( self.LCFile + '_%s_%s.hdf5' % (colorchoice, TYPE), 'r' )
-            self.BP_outb_amp[TYPE], self.BP_Q_mag[TYPE] = self.Get_outb_amp(lcdata_up, np.append('V',self.bands))
+            self.BP_outb_amp[TYPE], self.BP_Q_mag[TYPE] = self.Get_outb_amp(lcdata_up, lcdata_lo, np.append('V',self.bands))
             tms = lcdata_up['times'][:]    #times(UBVRI) = times(ugriz)
             self.BP_t_s[TYPE] = tms[0]
             self.BP_t_e[TYPE] = tms[-1]
@@ -1314,8 +1318,6 @@ class Mdwarf_template( transientTemplate ):
                 new_flux_decay  = Energy_scale *\
                                   self.get_all_bbs_decay( tSamp_decay, obbands)
                 lumlist += new_flux_rise + new_flux_decay
-            if logEU > 31.:
-                print logEU, trise/3600., tdecay/3600.
         for i,bnd in enumerate(obbands):   #Add quiescence flux
             if bnd in self.Lq.keys():
                 lumlist[i] += self.Lq[ bnd ]
@@ -1620,7 +1622,7 @@ class kilonovaTemplate( transientTemplate ):
             bluLC_up = h5py.File(blcf_up, 'r')
             bluLC_lo = h5py.File(blcf_lo, 'r')
             if self.mvRed == None:
-                self.netLC['times'] = bluLC_up['times'][:] 
+                self.netLC['times'] = bluLC_up['times'][:]
                 for band in self.bands:
                     if band.islower():
                         self.netLC[band] =  bluLC_lo[band][:]
@@ -1629,12 +1631,19 @@ class kilonovaTemplate( transientTemplate ):
                 bluLC_up.close()
                 bluLC_lo.close()
         if not self.netLC: # combine kilonova light curves
-            self.netLC['times'] = redLC_up['times'][:]
+            if len(redLC_up['times'][:]) > len(bluLC_up['times'][:]):
+                self.netLC['times'] = redLC_up['times'][:]
+            else:
+                self.netLC['times'] = bluLC_up['times'][:]
             for band in self.bands:
                 if band.islower():
                     m1, m2 = redLC_lo[band][:], bluLC_lo[band][:]
                 else:
                     m1, m2 = redLC_up[band][:], bluLC_up[band][:]
+                if len(m1) > len(m2):
+                    m2 = np.append(m2, np.zeros(len(m1) - len(m2)))
+                if len(m2) > len(m1):
+                    m1 = np.append(m1, np.zeros(len(m2) - len(m1)))
                 m12 = -2.5*np.log10( np.power(10.0, -.4*m1) + np.power(10.0, -.4*m2) )
                 self.netLC[band] = m12
             redLC_lo.close()
