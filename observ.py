@@ -546,7 +546,7 @@ class observation:
         """
         nrTrs:  The number of transients that have already been saved
         """
-        nTimeSteps = len( np.array(self.obTimes).flatten())
+        nTimeSteps = len( np.concatenate(self.obTimes))
         below_threshold = np.max(self.mag_lim) + 0.5 * self.mag_resolution
 
             

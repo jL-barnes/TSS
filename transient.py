@@ -188,8 +188,8 @@ class transientTemplate:
     def sample_all_LCs( self, obTimes, obBands, threshold ):
         for lc in self.transients: 
             vis_frames = np.array(lc.visibleframes)
-            obT = obTimes[vis_frames].flatten()
-            obB = obBands[vis_frames].flatten()
+            obT = np.concatenate(obTimes[vis_frames])
+            obB = np.concatenate(obBands[vis_frames])
             obT_f = max(obT)
             dts = obT_f - obT
             visible = False
@@ -296,9 +296,9 @@ class galactic_recur_template( transientTemplate ):
     def sample_all_LCs( self, obTimes, obBands, threshold ):
         for lc in self.transients:
             vis_frames = np.array(lc.visibleframes)
-            obT = obTimes[vis_frames].flatten()
+            obT = np.concatenate(obTimes[vis_frames])
             #print "obT", type(obT), obT
-            obB = obBands[vis_frames].flatten()
+            obB = np.concatenate(obBands[vis_frames])
             obT_f = max(obT)
             dts = obT_f - obT
             radec, mags, Qmags = self.sample_single_LC( lc, dts, obB, threshold )
@@ -459,9 +459,9 @@ class SUUMa_template( galactic_recur_template ):
 
         for lc in self.transients:
             vis_frames = np.array(lc.visibleframes)
-            obT = obTimes[vis_frames].flatten()
+            obT = np.concatenate(obTimes[vis_frames])
             #print "obT", type(obT), obT
-            obB = obBands[vis_frames].flatten()
+            obB = np.concatenate(obBands[vis_frames])
             obT_f = max(obT)
             dts = obT_f - obT
             radec, mags, Qmags = self.sample_single_LC( lc, dts, obB, threshold )
@@ -1065,7 +1065,7 @@ class Mdwarf_template( transientTemplate ):
         self.mag_resolution= obRun.mag_resolution
         self.broadbands_rise  = {}
         self.broadbands_decay = {}
-        self.LC_time = {'decay': self.deltaT_LC}
+        self.LC_time = {'decay': self.deltaT_LC * 24.*3600.}
     def get_blueprints( self, c, dtObs ):
         Nr_of_years = 1.	#Recurrent transient => Nr. of transients does not depend on 
                                 #observation time
@@ -1181,15 +1181,34 @@ class Mdwarf_template( transientTemplate ):
         """
         """
         """
-        tWindow = ( max(obTimes.flatten()) - min(obTimes.flatten()) )/3600.0 
+        #print obTimes
+        maxtime = 1.e-99
+        mintime = 1.e99
+        for frame in obTimes:
+            maxtime = max(maxtime, max(frame))
+            mintime = min(mintime, min(frame))
+        tWindow = ( maxtime - mintime )/3600.0 
         for mdwarf in self.transients:
             visible = False
             active = False
             
             vis_frames = np.array(mdwarf.visibleframes)
-            obT = obTimes[vis_frames].flatten()
-            obB = obBands[vis_frames].flatten()
+            """
+            obT = []
+            obB = []
+            for i,frame in enumerate(obTimes):
+                if i in vis_frames:
+                    obBB = obBands[i]
+                    for j,f in enumerate(frame):
+                        obT.append(f)
+                        obB.append(obBB[j])
+            obT = np.array(obT)
+            obB = np.array(obB)
+            """
+            obT = np.concatenate(obTimes[vis_frames])
+            obB = np.concatenate(obBands[vis_frames])
             #print "obT", obT, obB
+            #print type(obT), np.shape(obT)
             
             # galactic height in parsecs
             hZ = cT.get_galactic_height( mdwarf.LC_RA, mdwarf.LC_DEC, 
@@ -1445,9 +1464,9 @@ class xgal_template( transientTemplate  ):
             visible = False
             #print type(obTimes), obTimes
             vis_frames = np.array(lc.visibleframes)
-            obT = obTimes[vis_frames].flatten()
+            obT = np.concatenate(obTimes[vis_frames])
             #print "obT", type(obT), obT
-            obB = obBands[vis_frames].flatten()
+            obB = np.concatenate(obBands[vis_frames])
             obT_f = max(obT)
             dts = obT_f - obT
             
@@ -1537,8 +1556,8 @@ class xgal_no_Kcor_template( transientTemplate  ):
             visible = False
             
             vis_frames = np.array(lc.visibleframes)
-            obT = obTimes[vis_frames].flatten()
-            obB = obBands[vis_frames].flatten()
+            obT = np.concatenate(obTimes[vis_frames])
+            obB = np.concatenate(obBands[vis_frames])
             obT_f = max(obT)
             dts = obT_f - obT
         
@@ -1594,8 +1613,9 @@ class kilonovaTemplate( transientTemplate ):
 
     def sample_all_LCs( self, obTimes, obBands, threshold ):
         vis_frames = np.array(self.transients[0].visibleframes)
-        obT = obTimes[vis_frames].flatten()
-        obB = obBands[vis_frames].flatten()
+
+        obT = np.concatenate(obTimes[vis_frames])
+        obB = np.concatenate(obBands[vis_frames])
         obT_f = max(obT)
         dts = obT_f - obT
         bandmags_list = np.ones(len(dts)) * emptyval
