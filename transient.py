@@ -1671,7 +1671,7 @@ class kilonovaTemplate( transientTemplate ):
             bluLC_lo.close()
             bluLC_up.close()
         # now that we have the light curve, sample it at the appropriate times
-        tSample = (obT-self.t_merge)/8.64e4
+        tSample = (obT-self.t_merge)
         dist_mod = 5.0 * np.log10( self.dist/pc_to_cm  ) - 5.0
         for j, band in enumerate(self.bands):
             bandLC = self.netLC[band]
