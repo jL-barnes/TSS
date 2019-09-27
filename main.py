@@ -109,7 +109,7 @@ def getOpts():
     filehelp = ("File with observation times. defaults to the obstimes in"
                 + " params.py.")
     offlinehelp = ("Execute the calculations fully offline. This usually takes"
-                   + " a lot longer!"
+                   + " a lot longer!")
     nodusthelp = "Exclude dust in the calculations"
     colorsyshelp = ("Color system to use. ABVega will return UBVRI"
                     + " measurements in Vega and ugriz measurements in AB."
