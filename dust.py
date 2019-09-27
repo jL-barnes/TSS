@@ -16,6 +16,41 @@ from scipy.interpolate import RegularGridInterpolator
 emptyval = 1000.0
 
 class Green_Extinction:
+    """ The Green extinction class handles dust extinction for the 
+     Green et al. dust extinction.
+    This is a 3D dust map for the Milky Way in the Northern Hemisphere
+
+    Parameters
+    ----------
+    Xtr_dust : Schlegel_Extinction object
+       An object of an extragalactic dust extinction class
+    bands : numpy 1D-array
+       An array of all color filters in use
+    colorscheme : str
+        The colorscheme in use as secondary (what ugriz color system)
+    offline : bool
+        Do computations offline?
+    RA_lo : float
+        Lowest RA coordinate of the frame
+    RA_hi : float
+        Highest RA coordinate of the frame
+    DEC_lo : float
+        Lowest DEC coordinate of the frame
+    DEC_hi : float
+        Highest DEC coordinate of the frame
+
+    Attributes
+    ----------
+    Ang_res : float
+        The angular resolution of this dust map in degrees
+    queried : bool
+        Whether the map has already been queried
+    f : RegularGridInterpolator object
+        This will contain a function which you can interpolate to get
+         a dust extinction for a single coordinate
+    RV_BV : dict
+        Dictionary with the R_V(B-V) conversion factor
+    """
     def __init__(self, Xtr_dust, bands, colorscheme, offline, RA_lo, RA_hi, DEC_lo, DEC_hi):
         self.Name        = "Green et al. (2019)"
         self.Ang_Res     = 0.05667	#deg (=3.4 arcmin) = minimum angular res.
@@ -32,17 +67,27 @@ class Green_Extinction:
         self.RV_BV.update(fc.RV_BV['UBVRI'])
 
     def Sample_extinction(self, ra, dec, D):
-        """
-        Sample the 3D dust grid to obtain the EBV at
-         the location of the transient
-        This is then converted to an extinction
-        The result might be either emptyval or 'nan'. This means that
-         the result is out of the interpolation/query range. 
-         In that case we switch to the extragalactic EBV
-        Input:
-        ra: RA-coordinate in degrees
-        dec: DEC-coordinate in degrees
-        D: distance to transient in kpc
+        """ Sample the 3D dust grid to obtain the EBV (dust extinction 
+         coefficients) at the location of the transient.
+
+        This is then converted to an extinction in each color band
+        The result might be emptyval or 'nan'. This means that the
+         result is out of the interpolation/query range. 
+        In that case we switch to the extragalactic EBV
+
+        Parameters
+        ----------
+        ra : float
+            RA-coordinate in degrees
+        dec : float
+            DEC-coordinate in degrees
+        D : float
+            distance to transient in kpc
+
+        Returns
+        -------
+        A : dict
+            The dust extinction in units of magnitude
         """
         dmod = 5. * np.log10(D * 1000.) - 5.
         A = {}
@@ -55,12 +100,12 @@ class Green_Extinction:
         return A   
 
     def Setup_dust_grid(self):
-        """
-        Here we set up the 3D dust grid. We use the 
-         RegularGridInterpolator because it's the fasted
-        Our grid is regular (and rectangular).
+        """ Here we set up the 3D dust grid. We use the 
+         RegularGridInterpolator because the grid is regular and
+         rectangular
+
         To also have data just across the border, we add 1 RA and DEC
-         and add grid points 0.5*Ang_Res across this border
+         coordinate and add grid points 0.5*Ang_Res across this border
         We add 1 extra RA-coord to have an angular resolution slightly
          smaller than angres
         We then query the Green dust map
@@ -70,6 +115,11 @@ class Green_Extinction:
         And finally we Interpolate this grid with linear interpolation
         If one samples a coordinate outside the interpolation 
          boundaries, it will return the value -100 
+
+        Returns
+        -------
+        A function which you can interpolate to get a dust extinction
+         for a single coordinate
         """
 
         Nr_RA = np.ceil((self.RA_hi - self.RA_lo) / self.Ang_Res) + 2
@@ -105,9 +155,40 @@ class Green_Extinction:
                                        fill_value = emptyval)
 
 
-
-
 class Schlegel_Extinction:
+    """ The Schlegel extinction class handles dust extinction for the 
+     Schlegel et al. dust extinction.
+    This is an all-sky 2D dust map for the cumulative dust extinction.
+
+    Parameters
+    ----------
+    bands : numpy 1D-array
+       An array of all color filters in use
+    colorscheme : str
+        The colorscheme in use as secondary (what ugriz color system)
+    offline : bool
+        Do computations offline?
+    RA_lo : float
+        Lowest RA coordinate of the frame
+    RA_hi : float
+        Highest RA coordinate of the frame
+    DEC_lo : float
+        Lowest DEC coordinate of the frame
+    DEC_hi : float
+        Highest DEC coordinate of the frame
+
+    Attributes
+    ----------
+    Ang_res : float
+        The angular resolution of this dust map in degrees
+    queried : bool
+        Whether the map has already been queried
+    f : RegularGridInterpolator object
+        This will contain a function which you can interpolate to get
+         a dust extinction for a single coordinate
+    RV_BV : dict
+        Dictionary with the R_V(B-V) conversion factor
+    """
     def __init__(self, bands, colorscheme, offline, RA_lo, RA_hi, DEC_lo, DEC_hi):
         self.Name        = "Schlegel (1998)"
         self.Ang_Res     = 0.1017	#deg (=6.1 arcmin)
@@ -123,10 +204,22 @@ class Schlegel_Extinction:
         self.RV_BV.update(fc.RV_BV['UBVRI'])
 
     def Sample_extinction(self, ra, dec, D):
-        """
-        Sample the 2D dust grid to obtain the EBV at
-         the location of the transient
-        This is then converted to an extinction
+        """ Sample the 2D dust grid to obtain the EBV at the location 
+         of the transient
+
+        Parameters
+        ----------
+        ra : float
+            RA-coordinate in degrees
+        dec : float
+            DEC-coordinate in degrees
+        D : float
+            distance to transient in kpc
+
+        Returns
+        -------
+        A : dict
+            The dust extinction in units of magnitude
         """
         EBV = self.f(ra,dec)
         A = {}
@@ -135,8 +228,8 @@ class Schlegel_Extinction:
         return A   
 
     def Setup_dust_grid(self):
-        """
-        Here we set up the 2D dust grid.
+        """Here we set up the 2D dust grid.
+
         Our grid is regular (and rectangular), which allows us to use
          RectBivariateSpline, which is faster than interp2d
         To also have data just across the border, we add 1 RA and DEC
@@ -146,6 +239,11 @@ class Schlegel_Extinction:
         We then query the Schlegel dust map with the Argonaut query
         Subsequently we convert the 1D grid of SFD into a 2D grid
         And finally we Interpolate this grid
+
+        Returns
+        -------
+        A function which you can interpolate to get a dust extinction
+         for a single coordinate
         """
         Nr_RA = np.ceil((self.RA_hi - self.RA_lo) / self.Ang_Res) + 2
         Nr_DEC = np.ceil((self.DEC_hi - self.DEC_lo) / self.Ang_Res) + 2
@@ -167,9 +265,47 @@ class Schlegel_Extinction:
         return RectBivariateSpline(ra, dec, EBV)
  
 
-
-
 class Schultheis_Extinction:
+    """ The Schultheis extinction class handles dust extinction for the 
+     Schultheis et al. dust extinction.
+    This is a 3D dust map for the Milky Way bulge
+
+    Parameters
+    ----------
+    Xtr_dust : Schlegel_Extinction object
+       An object of an extragalactic dust extinction class
+    bands : numpy 1D-array
+       An array of all color filters in use
+    colorscheme : str
+        The colorscheme in use as secondary (what ugriz color system)
+    offline : bool
+        Do computations offline?
+    RA_lo : float
+        Lowest RA coordinate of the frame
+    RA_hi : float
+        Highest RA coordinate of the frame
+    DEC_lo : float
+        Lowest DEC coordinate of the frame
+    DEC_hi : float
+        Highest DEC coordinate of the frame
+
+    Attributes
+    ----------
+    Ang_res : float
+        The angular resolution of this dust map in degrees
+    Bulge_file : h5py file object
+        The file with the bulge dust data.
+    queried : bool
+        Whether the map has already been queried
+    f : RegularGridInterpolator object
+        This will contain a function which you can interpolate to get
+         a dust extinction for a single coordinate
+    RV_BV : dict
+        Dictionary with the R_V(B-V) conversion factor
+    useGreen : bool
+        Whether we can use the Green et al. extinction if a coordinate
+         is outside the Schultheis boundary
+    """
     def __init__(self, Xtr_dust, bands, colorscheme, offline, RA_lo, RA_hi, DEC_lo, DEC_hi):
         self.Name        = "Schultheis et al. (2014)"
         self.Ang_Res     = 0.1	#deg (=6 arcmin)
@@ -189,18 +325,27 @@ class Schultheis_Extinction:
             self.useGreen = True
             self.Green = Green_Extinction(Xtr_dust, bands, colorscheme, offline, RA_lo, RA_hi, DEC_lo, DEC_hi)
 
-
     def Sample_extinction(self, ra, dec, D):
-        """
-        Sample the 3D dust grid to obtain the EJK at
+        """ Sample the 3D dust grid to obtain the EJK at
          the location of the transient
+
         This is then converted to an extinction
         The result might be either '-100' or 'nan'. In that case we sample
          the Green extinction map if possible
-        Input:
-        ra: RA-coordinate in degrees
-        dec: DEC-coordinate in degrees
-        D: distance to transient in kpc
+
+        Parameters
+        ----------
+        ra : float
+            RA-coordinate in degrees
+        dec : float
+            DEC-coordinate in degrees
+        D : float
+            distance to transient in kpc
+
+        Returns
+        -------
+        A : dict
+            The dust extinction in units of magnitude
         """
         lon, lat = astCoords.convertCoords( "J2000", "GALACTIC", ra, dec, 2000 )
         if lon > 180: lon -= 360	#Here lon runs from -180 to 180
@@ -217,7 +362,9 @@ class Schultheis_Extinction:
         return A 
 
     def Setup_dust_grid(self):
-        """
+        """Here we set up the 3D dust grid.
+
+
         Loads the file with the dust data
         This file is a preprocessed version of the file provided
          by Schultheis et al. (2014)
@@ -226,6 +373,11 @@ class Schultheis_Extinction:
          Schultheis et al. calculated extinction in bins
         If one samples a coordinate outside the interpolation 
          boundaries, it will return the value -100 
+
+        Returns
+        -------
+        A function which you can interpolate to get a dust extinction
+         for a single coordinate
         """
         EJK = np.array(self.Bulge_file['EJK'][:])
         lon = np.array(self.Bulge_file['LON'][:])
@@ -238,16 +390,33 @@ class Schultheis_Extinction:
                                        fill_value = emptyval)
 
 
-
-
 class No_dust:
+    """ A class that can serve as a replacement of the classes above
+     when there is no dust extinction
+
+    Parameters
+    ----------
+    bands : numpy 1D-array
+       An array of all color filters in use
+
+
+    Attributes
+    ----------
+    queried : bool
+        Whether the map has already been queried
+    """
     def __init__(self, bands):
         self.Name        = "No dust"
         self.queried     = False
         self.bands       = bands
+
     def Sample_extinction(self, ra, dec, d):
-        """
-        We ignore dust, so, A=0
+        """ We ignore dust, so, A=0
+
+        Returns
+        -------
+        A : dict
+            The dust extinction in units of magnitude
         """
         A = {}
         for color in self.bands:
@@ -256,13 +425,26 @@ class No_dust:
 
 #%%
 class Host_extinction:
+    """ A class for host galaxy extinction.
+
+    Parameters
+    ----------
+    In : str
+        The type of host galaxy extinction. Can be (no, G%f, F%f) for 
+         (no dust extinction, a Gaussian with sigma=%f, an exponential
+         with sigma=\f)
+    obRun : Observation instance
+        The parent observation instance of which the grid instance is a
+         child
+
+    Attributes
+    ----------
+    bands : numpy 1D-array
+       An array of all color filters in use
+    RV_BV : dict
+        Dictionary with the R_V(B-V) conversion factor
+    """
     def __init__(self, In, obRun):
-        """
-        Set the host galaxy extinction up for a transient.
-        'In' should be of the format 'E%f' or 'G%f' where the letter decides 
-         whether an exponential or gaussian distribution is used and %f is a 
-         float that is the scale parameter
-        """
         self.no_host = False
         self.obRun   = obRun
         self.bands   = self.obRun.bands
@@ -274,13 +456,14 @@ class Host_extinction:
             self.Exp_Gauss = In[0]
             self.sigma     = float(In[1:])
             if self.Exp_Gauss not in ['E', 'G', 'e', 'g']:
-                print "Warning: Invalid distribution type entered."
-                print "Please enter E... or G... in the host extinction column in", self.obRun.transientFile
-                print "No host galaxy extinction is assumed"
+                print("Warning: Invalid distribution type entered.")
+                print("Please enter E... or G... in the host extinction column in", self.obRun.transientFile)
+                print("No host galaxy extinction is assumed")
                 self.no_host = True
+
     def Sample_host_extinction(self):
-        """
-        Sample the host galaxy extinction distribution.
+        """ Sample the host galaxy extinction distribution.
+
         If no host galaxy extinction is allowed for this transient, 
          A=0 is returned.
         Otherwise the dust extinction is sampled from either:
@@ -288,6 +471,11 @@ class Host_extinction:
             - A one-sided gaussian centered at A=0
             Both with self.sigma as scale parameter
         We assume a R_V=3.1 extinction law similar to the Milky Way.
+
+        Returns
+        -------
+        A : dict
+            The dust extinction in units of magnitude
         """
         A = {}
         if self.obRun.nodust or self.no_host:
@@ -303,14 +491,29 @@ class Host_extinction:
             A[color] = float(EBV) * self.RV_BV[color] 
         return A
     
-#%%
+
 def InGreenBoundary(RA_lo, RA_hi, DEC_lo, DEC_hi):
-    """
-    Test if the RA and DEC are within the boundaries
+    """ Test if the RA and DEC are within the boundaries
+
     This is tested by looking at the converged entry for this
      sightline. If any part of the observation window is
      within the boundary, we'll get green light to use this
      3D map.
+
+    Parameters
+    ----------
+    RA_lo : float
+        Lowest RA coordinate of the frame
+    RA_hi : float
+        Highest RA coordinate of the frame
+    DEC_lo : float
+        Lowest DEC coordinate of the frame
+    DEC_hi : float
+        Highest DEC coordinate of the frame
+
+    Returns
+    -------
+    A boolean on whether any coordinate is within the boundaries
     """
     RAs  = np.array([RA_lo, RA_lo, RA_hi, RA_hi]) * u.deg
     DECs = np.array([DEC_lo, DEC_hi, DEC_lo, DEC_hi]) * u.deg
@@ -318,12 +521,26 @@ def InGreenBoundary(RA_lo, RA_hi, DEC_lo, DEC_hi):
     Bayestar = bayestar.BayestarWebQuery(version='bayestar2019')
     DQ   = Bayestar(Coords, mode='best')
     return np.any(DQ > 0.)
-#%%
+
 def InSchultheisBoundary(RA_lo, RA_hi, DEC_lo, DEC_hi):
-    """
-    Test if any of the outer coordinates of the field of view
+    """ Test if any of the outer coordinates of the field of view
      are within the Schultheis+ dust map boundary
-    If any of them is inside, return True, else return False
+
+    Parameters
+    ----------
+    RA_lo : float
+        Lowest RA coordinate of the frame
+    RA_hi : float
+        Highest RA coordinate of the frame
+    DEC_lo : float
+        Lowest DEC coordinate of the frame
+    DEC_hi : float
+        Highest DEC coordinate of the frame
+
+    Returns
+    -------
+    A boolean. If any of the coordinates is inside the boundary, return
+     True, else return False
     """
     RAs = [RA_lo, RA_hi, RA_lo, RA_hi]
     DECs = [DEC_lo, DEC_lo, DEC_hi, DEC_hi]
@@ -339,14 +556,33 @@ def InSchultheisBoundary(RA_lo, RA_hi, DEC_lo, DEC_hi):
     return inSchultheis
 
 def Greendustquery(ra, dec, offline, Mode='galactic'):
-    """
-    A wrapper to make sure that the data is in the right format for
+    """ A wrapper to make sure that the data is in the right format for
      the Argonaut server.
+
     The Argonaut server only takes arrays of length <5000. 
     This means that the coordinate arrays have to be cut up if they're
      larger than 5000.
     It also only extracts the important entries of the dustquery.
      Likewise, 'distmod' is only needed once in Dust_Ext
+
+    Parameters
+    ----------
+    ra : list
+        List of RA coordinates of the points to be queried
+    dec : list
+        List of DEC coordinates of the points to be queried
+    offline : bool
+        Do computations offline?
+    Mode : str, optional
+        Either 'Galactic' or 'extragalactic'. If galactic, the 
+         bayestar2019 (Green et al.) map will be queried, otherwise
+         the SFD (Schlegel) map is queried.
+
+    Returns
+    -------
+    Dust_Ext : numpy 1D-array
+        An array of Dust extinction coefficients in units of E(B-V)_SFD
+         for every (ra[i],dec[i]) coordinate.
     """
     Total_len = len(ra)
     if offline:
@@ -382,10 +618,10 @@ def Greendustquery(ra, dec, offline, Mode='galactic'):
         dec = np.array(dec) * u.deg
         Coords = SkyCoord(ra, dec, frame='icrs')
         if Mode == 'galactic':
-            print "Querying remote server for Galactic Bayestar dust data..."
+            print("Querying remote server for Galactic Bayestar dust data...")
             Dust_Ext = Query(Coords, mode='best')
         elif Mode == 'extragalactic':
-            print "Querying remote server for extragalactic Bayestar dust data..."
+            print("Querying remote server for extragalactic Bayestar dust data...")
             Dust_Ext = Query(Coords)
 
     return Dust_Ext

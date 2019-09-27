@@ -7,6 +7,7 @@ Some telescope filter characteristics
 RV_BV is the way a filter reacts to dust extinction. 
 It is the conversion from E(B-V)_SFD to an extinction A_b
 It's taken from table 6 (with R_V=3.1) from Schlafly & Finkbeiner (2011)
+or computed in a similar way
 http://iopscience.iop.org/article/10.1088/0004-637X/737/2/103#apj398709t6
 RV_JK is the conversion from E(J-K) to E(B-V)_SFD
 """

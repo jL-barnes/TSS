@@ -23,30 +23,29 @@ color_system:   The color system corresponding to ugriz(y)(q)
 """
 
 mag_limit      = {'U':23.0, 'B':23.0, 'V':21.1, 'R':20.9, 'I':20.2, 'u':20.9, 'g':22.9, 'r':22.3, 'i':21.7, 'z':21.4, 'q': 23.2, 'y':21.0} 
-#mag_limit      = {'U':21.0, 'B':21.0, 'V':21.0, 'R':21.0, 'I':21.0, 'u':18.9, 'g':19.9, 'r':19.3, 'i':19.7, 'z':19.4} 
 mag_resolution = 0.1	
 aperture_DEC   = 1.64317
 aperture_RA    = 1.64317
-color_system   = 'blackgem'#'sdss'
+color_system   = 'sdss'
 
 
 
 # Transients to use. Set to zero to leave out of calculation.
 
-use_nova     = 0
-use_UGem     = 0
-use_SUUMa    = 0
-use_ZCam     = 0
-use_SNIa     = 0
-use_SNIb     = 0
-use_SNIc     = 0
-use_SNIIP    = 0
-use_SNIIL    = 0
-use_SNIInL   = 0
-use_SNIInP   = 0
-use_M3       = 0
-use_M3_5     = 0
-use_M4       = 0
+use_nova     = 1
+use_UGem     = 1
+use_SUUMa    = 1
+use_ZCam     = 1
+use_SNIa     = 1
+use_SNIb     = 1
+use_SNIc     = 1
+use_SNIIP    = 1
+use_SNIIL    = 1
+use_SNIInL   = 1
+use_SNIInP   = 1
+use_M3       = 1
+use_M3_5     = 1
+use_M4       = 1
 use_kilonova = 1	 #Should have no entry in dataTransients.dat or peakmagsTransients.dat
 
 """
@@ -60,7 +59,7 @@ Extra_transients = []
 #Data for the kilonova injection
 maxLIGODist = 5.25e26    #cm = 170 Mpc
 k_tMerge    = -3600      #s	Time of merger relative to observation start
-k_dist	    = 5.25e24    #cm	Can be set to None to set the distance randomly within LIGO limits
+k_dist	    = None    #cm	Can be set to None to set the distance randomly within LIGO limits
 k_mvRed	    = [0.04,0.15]#[Msun,c] Ejecta mass and velocity of red component
 k_mvBlue    = [0.025,0.3]#[Msun,c] Ejecta mass and velocity of blue component
 			 #To only have a red(blue) component, set k_mvRed(k_mvBlue)=None
@@ -91,11 +90,11 @@ Obstimes = 'Obstimes.dat'
 CC_bands = ['g', 'r', 'i']
 
 #Colors used for the animation
-#An animation will be created with a seperate subfigure for each color
+#An animation will be created with a separate subfigure for each color
 Ani_bands = ['g', 'r']
 
 #Output file for TSS data
-outfile = 'long.dat'
+outfile = 'output.dat'
 
 #Output file for Color-Color diagram
 CC_outfile = 'CC.png'

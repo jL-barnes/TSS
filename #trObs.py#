@@ -1,7 +1,0 @@
-# initialize a TransientSet
-# make transient templates
-# now we actually want to take data
-
-def generate_data( ): # function of transient set
-    for transient_type in self.transient_templates: # looping over each kind of transient
-        
